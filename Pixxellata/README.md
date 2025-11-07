@@ -4,6 +4,17 @@
 
 **Nota:** software realizzato anche con l’aiuto di modelli linguistici (LLM)
 
+<img src="https://github.com/user-attachments/assets/be0071e5-bf8f-4652-ad98-f1517c20733a"
+     width="500">
+
+     
+<img src="https://github.com/user-attachments/files/23421338/pixel_925197.bmp"
+     width="500">
+
+
+
+
+
 ## Panoramica
 
 Questo sketch trasforma il pannello **ESP32-S3 Panel-4848S040** (display 480×480 con controller **ST7701** e touch **GT911**) in una semplice app di **pixel art**:
