@@ -1,11 +1,11 @@
 /*
-  Gat News Ticker — ESP32-S3 Panel-4848S040
+  Gat News Ticker – ESP32-S3 Panel-4848S040
 
   Funzioni:
   - Connessione Wi-Fi: prova STA con credenziali salvate; se assenti/apparse, avvia AP + captive portal.
   - RSS: aggrega 4 feed, parsing titoli/link, dedup, ordine random globale.
   - Render: 4 titoli per pagina, cambio ogni 30 s, aggiornamento feed ogni 10 min.
-  - Testo: arancione su nero, “grassetto” simulato; normalizzazione virgolette/apici -> apostrofo semplice (').
+  - NTP: sincronizza ora una volta dopo connessione WiFi, mostra nel header (gg/mm hh:mm)
 */
 
 #include <Arduino.h>
@@ -16,12 +16,21 @@
 #include <DNSServer.h>
 #include <HTTPClient.h>
 #include <Arduino_GFX_Library.h>
+#include <time.h>
 
 // =========================== Configurazione hardware display ===========================
 #define GFX_BL      38
 #define PWM_CHANNEL 0
 #define PWM_FREQ    1000
 #define PWM_BITS    8
+
+// ----------------- Config NTP -----------------
+static const char* NTP_SERVER = "pool.ntp.org";
+// Fuso Italia/Svizzera: UTC+1 con DST +1
+static const long   GMT_OFFSET_SEC      = 3600;
+static const int    DAYLIGHT_OFFSET_SEC = 3600;
+
+static bool g_timeSynced = false;
 
 // Bus SPI software per comandi ST7701
 Arduino_DataBus *bus = new Arduino_SWSPI(
@@ -121,6 +130,54 @@ static void panelKickstart() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillRect(0, 0, 480, 20, RGB565_ORANGE);
   delay(60);
+}
+
+// =========================== Sincronizzazione NTP ===========================
+static bool waitForValidTime(uint32_t timeoutMs = 8000) {
+  uint32_t t0 = millis();
+  time_t now = 0;
+  struct tm info;
+  
+  while ((millis() - t0) < timeoutMs) {
+    time(&now);
+    localtime_r(&now, &info);
+    // Verifica che l'anno sia ragionevole (> 2020)
+    if (info.tm_year + 1900 > 2020) {
+      return true;
+    }
+    delay(100);
+  }
+  return false;
+}
+
+static void syncTimeFromNTP() {
+  if (g_timeSynced) return;
+  
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+  
+  if (waitForValidTime(8000)) {
+    g_timeSynced = true;
+    Serial.println("NTP sync OK");
+  } else {
+    Serial.println("NTP sync failed");
+  }
+}
+
+static String getFormattedDateTime() {
+  if (!g_timeSynced) return "";
+  
+  time_t now;
+  struct tm timeinfo;
+  time(&now);
+  localtime_r(&now, &timeinfo);
+  
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%02d/%02d %02d:%02d", 
+           timeinfo.tm_mday, 
+           timeinfo.tm_mon + 1, 
+           timeinfo.tm_hour, 
+           timeinfo.tm_min);
+  return String(buffer);
 }
 
 // =========================== Normalizzazione testo ===========================
@@ -288,7 +345,18 @@ static void startWebPortal(){
 // =========================== UI: header e schermata AP ===========================
 static void drawHeader() {
   gfx->fillRect(0, 0, 480, HEADER_H, RGB565_ORANGE);
+  
+  // Disegna il titolo a sinistra
   drawBoldTextColored(16, 28, "Gat News Ticker", RGB565_BLACK, RGB565_ORANGE);
+  
+  // Disegna data/ora a destra se disponibile
+  String datetime = getFormattedDateTime();
+  if (datetime.length() > 0) {
+    // Calcola posizione per allineare a destra
+    int textWidth = datetime.length() * CHAR_W;
+    int xPos = 480 - textWidth - 16;
+    drawBoldTextColored(xPos, 28, datetime, RGB565_BLACK, RGB565_ORANGE);
+  }
 }
 
 static void drawAPScreenOnce(const String& ssid, const String& pass)
@@ -478,6 +546,8 @@ static void drawNewsPage(int pageIdx) {
 
 // =========================== Setup / Loop ===========================
 void setup() {
+  Serial.begin(115200);
+  
   backlightOn();
   panelKickstart();
 
@@ -489,6 +559,9 @@ void setup() {
   if (!tryConnectSTA(8000)) {
     startAPWithPortal();
   } else {
+    // Sincronizza ora da NTP dopo connessione WiFi riuscita
+    syncTimeFromNTP();
+    
     refreshAllFeeds();
     lastRefresh = millis();
     drawNewsPage(currentPage);
@@ -505,7 +578,15 @@ void loop() {
 
   if (WiFi.status() != WL_CONNECTED) {
     static uint32_t nextTry = 0;
-    if (millis() > nextTry) { nextTry = millis() + 5000; tryConnectSTA(5000); }
+    if (millis() > nextTry) { 
+      nextTry = millis() + 5000; 
+      if (tryConnectSTA(5000)) {
+        // Risincronizza NTP dopo riconnessione
+        if (!g_timeSynced) {
+          syncTimeFromNTP();
+        }
+      }
+    }
     delay(40);
     return;
   }
