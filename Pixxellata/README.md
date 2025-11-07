@@ -38,8 +38,7 @@ Il tocco è gestito con **edge detection** + **cooldown** per evitare doppi tap 
 * Touch: **GT911** su I²C.
 * microSD: **SPI**.
 
-### Pin principali (come da sketch)
-
+### Pin principali
 ```text
 I2C (touch): SDA=19, SCL=45
 Backlight:   GFX_BL=38 (LEDC)
