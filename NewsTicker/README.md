@@ -1,10 +1,10 @@
 # Gat News Ticker (ESP32-4848S040)
 
 Ticker di notizie per pannello **ESP32-4848S040**.
-Mostra i titoli presi da 4 feed RSS, impagina **4 notizie per pagina** (testo arancione su sfondo nero), cambia pagina ogni **30 s** e aggiorna l’elenco ogni **10 minuti**.
-Al primo avvio crea un **Access Point** con **captive portal** per inserire SSID e password del proprio wifi domestico: le credenziali vengono salvate in **NVS/Preferences** e riutilizzate ai riavvii e anche dopo le riprogrammazioni.
 
----
+<img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299"
+     width="500">
+
 
 ## Requisiti hardware
 
