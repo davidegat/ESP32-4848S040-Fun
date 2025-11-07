@@ -43,16 +43,9 @@ Tutti i link sono formalmente validi per YouTube… solo che quasi nessuno porta
 
 ## Nota ironica
 
-Sì, i link sono veri.
-Sì, puoi scannerizzarli e il browser ti porterà davvero su YouTube.
-No, non troverai quasi mai un video.
-(Statisticamente, è più facile vincere alla lotteria che beccare un ID esistente.)
-Ma in fondo, è proprio questa l’essenza del progetto:
-celebrare l’inutilità perfettamente funzionante.
+Sì, i link sono veri. No, non troverai *quasi* mai un video.
 
 ## Licenza
 
 Rilasciato sotto licenza Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0).
 Puoi usarlo, modificarlo e condividerlo liberamente, purché non a scopo commerciale e citando l’autore.
-
-"Il QR perfetto non apre nulla, ma apre la mente."
