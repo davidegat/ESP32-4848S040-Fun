@@ -1,9 +1,5 @@
 # ESP32-S3 Panel-4848S040 · Experiments & Fun
-
-> **Autore:** Davide Nasato (gat)
-> **Repo:** [https://github.com/davidegat/ESP32-4848S040-Fun](https://github.com/davidegat/ESP32-4848S040-Fun)
-> **Licenza:** Creative Commons – Attribuzione – Non Commerciale 4.0 (CC BY-NC 4.0)
-> **Nota:** sviluppo supportato anche da modelli linguistici (LLM)
+**Autore:** Davide Nasato (gat)
 
 <img src="https://github.com/user-attachments/assets/fa71b786-9da7-488c-a8c5-b9a4eecb2e9e"
      alt="guition-esp32-s3-4848s040-connector"
