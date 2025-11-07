@@ -1,8 +1,8 @@
 # ESP32-S3 Panel-4848S040 · Pixel Art Grid + Palette + Clear/Export
 
-> **Autore:** Davide Nasato (gat)
-> **Repo:** [https://github.com/davidegat/ESP32-4848S040-Fun](https://github.com/davidegat/ESP32-4848S040-Fun)
-> **Nota:** software realizzato anche con l’aiuto di modelli linguistici (LLM)
+**Autore:** Davide Nasato (gat)
+
+**Nota:** software realizzato anche con l’aiuto di modelli linguistici (LLM)
 
 ## Panoramica
 
