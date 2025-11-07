@@ -6,21 +6,10 @@ Al primo avvio crea un **Access Point** con **captive portal** per inserire SSID
 
 ---
 
-## Caratteristiche
-
-* Pannello **480×480 RGB** (controller ST7701 – init “type9”) pilotato con **Arduino_GFX**.
-* **Wi-Fi provisioning** via AP + captive portal (DNSServer + WebServer).
-* Lettura **RSS** (HTTPClient)
-* **Dedup** titoli/link, **shuffle globale**, 4 titoli/pagina / 30 s, **refresh ogni 10 min**.
-* Normalizzazione caratteri
-
----
-
 ## Requisiti hardware
 
-* Board: **ESP32-S3** con bus **RGB 16-bit** collegato a pannello **480×480** (pinout come nello sketch).
-* Retroilluminazione su pin **38** (PWM).
-
+* Board: ESP32-4848S040
+  
 ---
 
 ## Dipendenze (Arduino IDE / PlatformIO)
