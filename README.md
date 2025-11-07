@@ -1,4 +1,56 @@
-# ESP32-4848S040-Fun
-Un repository dedicato al modulo ESP32-4848S040 con display 480x480
+# ESP32-S3 Panel-4848S040 · Experiments & Fun
 
-# COMING SOON #
+> **Autore:** Davide Nasato (gat)
+> **Repo:** [https://github.com/davidegat/ESP32-4848S040-Fun](https://github.com/davidegat/ESP32-4848S040-Fun)
+> **Licenza:** Creative Commons – Attribuzione – Non Commerciale 4.0 (CC BY-NC 4.0)
+> **Nota:** sviluppo supportato anche da modelli linguistici (LLM)
+
+---
+
+## 📘 Descrizione
+
+Questo repository raccoglie **esperimenti e strumenti software** per il **pannello ESP32-S3 Panel-4848S040**, che integra:
+
+* microcontrollore **ESP32-S3**
+* **display IPS 480×480** con controller **ST7701**
+* **touch capacitivo GT911**
+* **slot microSD** collegato via **FSPI**
+
+Gli sketch qui presenti esplorano diverse funzioni del pannello: grafica RGB, interfacce touch, salvataggio su SD e controllo della retroilluminazione.
+
+---
+
+## ⚙️ Hardware supportato
+
+**Scheda:** ESP32-S3 Panel-4848S040
+📖 [Documentazione HomeDing](https://homeding.github.io/boards/esp32s3/panel-4848S040.htm)
+
+### Pin principali (configurazione standard)
+
+| Funzione       | Pin                                        |
+| -------------- | ------------------------------------------ |
+| I²C Touch      | SDA = 19, SCL = 45                         |
+| Backlight      | 38 (PWM LEDC)                              |
+| SWSPI (ST7701) | CS = 39, SCK = 48, MOSI = 47               |
+| RGB Panel      | DE = 18, VSYNC = 17, HSYNC = 16, PCLK = 21 |
+| Canali R       | 11, 12, 13, 14, 0                          |
+| Canali G       | 8, 20, 3, 46, 9, 10                        |
+| Canali B       | 4, 5, 6, 7, 15                             |
+| SD (FSPI)      | CS = 42, MOSI = 47, MISO = 41, SCK = 48    |
+
+> ⚠️ I pin del display e del touch sono già configurati correttamente.
+> Evita modifiche a meno di necessità specifiche.
+
+---
+
+## 🧾 Licenza
+
+Questo progetto è distribuito con licenza
+**Creative Commons – Attribuzione – Non Commerciale 4.0 Internazionale (CC BY-NC 4.0)**.
+
+Puoi condividerlo e modificarlo liberamente, **citando l’autore**
+(Davide Nasato / [davidegat](https://github.com/davidegat)) e **senza scopi commerciali**.
+
+🔗 [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+
+---
