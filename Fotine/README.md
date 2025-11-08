@@ -46,7 +46,3 @@ Puoi **copiare, modificare e ridistribuire** questo progetto a condizione di:
 * **citare l’autore originale**,
 * **non usarlo a fini commerciali**,
 * **mantenere la stessa licenza** su eventuali derivati.
-
----
-
-Vuoi che aggiunga anche una piccola sezione “Crediti” (per esempio a `images.weserv.nl` come proxy o a `TJpg_Decoder` di Bodmer)?
