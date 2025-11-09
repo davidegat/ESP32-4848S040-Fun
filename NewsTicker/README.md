@@ -1,169 +1,155 @@
-# Gat News Ticker (ESP32-4848S040)
+# Gat News Ticker – ESP32-S3 Panel-4848S040
 
-Ticker di notizie per pannello **ESP32-4848S040**.
+Ticker di notizie RSS per pannello ESP32-S3 4848S040 (480×480 ST7701) con configurazione via Web UI.
 
-<img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299"
-     width="500">
-
-
-## Requisiti hardware
-
-* Board: ESP32-4848S040
-  
----
-
-## Dipendenze (Arduino IDE / PlatformIO)
-
-* `Arduino_GFX_Library`
-* `DNSServer`
-* `WebServer` (ESP32)
-* `WiFi` (ESP32)
-* `HTTPClient`
-* `Preferences`
+<img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299" width="500">
 
 ---
 
-## Build: impostazioni consigliate (Arduino IDE)
+## Descrizione
 
-* Scheda: **ESP32S3 Dev Module**
-* USB CDC On Boot: **Enabled**
-* Flash Size: **8MB** (o quella del tuo modulo)
-* PSRAM: **Enabled** (se presente)
-* Upload Speed: **921600** (o 460800 se instabile)
-* Partition Scheme: **Default 4MB/8MB** (come da modulo)
+Il progetto mostra in tempo reale notizie da feed RSS aggiornate automaticamente sul display.  
+Include una pagina Web per configurare fino a otto feed RSS con limiti individuali, salvati in memoria NVS.
 
 ---
 
-## Configurazione dei feed RSS
+## Funzioni principali
 
-I feed sono nel sorgente, all’inizio del file (`FEEDS`):
-
-```cpp
-const char* FEEDS[4] = {
-  "https://www.ansa.it/sito/ansait_rss.xml",
-  "https://www.ilsole24ore.com/rss/mondo.xml",
-  "https://www.ilsole24ore.com/rss/italia.xml",
-  "https://www.fanpage.it/feed/"
-};
-```
-
-* Puoi **sostituire** uno o più URL; se ne **mancano** alcuni (stringa vuota), l’app **ignora** quel posto senza errori.
-* Dopo aver cambiato gli URL e **riprogrammato**, **non serve rifare la configurazione Wi-Fi**: le credenziali restano salvate in NVS e saranno riutilizzate automaticamente.
+- Display 480×480 pilotato con **Arduino_GFX_Library** (ST7701 type9).
+- Interfaccia grafica con barra superiore blu, testo giallo, notizie bianche e separatori verdi.
+- Quattro notizie per pagina con cambio automatico ogni 30 secondi.
+- Aggiornamento automatico ogni 10 minuti e refresh immediato dopo il salvataggio da Web UI.
+- Captive portal per configurazione Wi-Fi (solo in modalità AP).
+- Pagina unica `/rss` per modificare fino a otto feed con limite per feed.
+- Configurazione salvata in **NVS** (`url0..url7`, `limit0..limit7`, `n`).
 
 ---
 
-## Prima esecuzione / Provisioning Wi-Fi
+## Modalità operative
 
-1. Se non trova credenziali salvate, il modulo avvia un **Access Point** (SSID tipo `PANEL-XXXX`) e un **captive portal**.
-2. Collegati all’AP dal telefono/PC con il codice QR a schermo. Si aprirà la pagina per inserire **SSID** e **Password** della tua rete.
-3. Le credenziali vengono salvate; il dispositivo si riavvia e si collega alla rete.
+### Access Point (AP)
+- Avviato solo se mancano credenziali Wi-Fi.
+- SSID tipo `PANEL-XXXX`, password `panelsetup`.
+- Pagina captive per inserire SSID e password.
 
-> Se ricompili cambiando solo i feed, **le credenziali rimangono**: non devi ripetere il login al wifi domestico.
+### Stazione (STA)
+- Connessione automatica alla rete salvata.
+- Web UI accessibile su `http://<IP>/rss`.
+- Salvataggio inline con conferma sulla stessa pagina e aggiornamento immediato del display.
+
+---
+
+## Dipendenze
+
+- Arduino_GFX_Library  
+- DNSServer  
+- WebServer (ESP32)  
+- WiFi (ESP32)  
+- HTTPClient  
+- Preferences
+
+---
+
+## Build
+
+- Scheda: **ESP32S3 Dev Module**
+- USB CDC On Boot: Enabled
+- Flash Size: 8MB (o quella del modulo)
+- PSRAM: Enabled (se presente)
+- Upload Speed: 921600 (o 460800 se instabile)
+- Partition Scheme: Default 4MB/8MB
+
+---
+
+## Flusso operativo
+
+1. All’avvio tenta la connessione Wi-Fi; se fallisce, avvia AP e captive portal.
+2. In modalità STA sincronizza l’orario (NTP) e scarica i feed RSS.
+3. Mostra le notizie e cambia pagina ogni 30 secondi.
+4. Aggiorna i feed ogni 10 minuti o subito dopo un salvataggio da Web UI.
 
 ---
 
 ## Licenza
 
-Questo progetto è distribuito sotto licenza
-**Creative Commons Attribuzione – Non commerciale 4.0 Internazionale (CC BY-NC 4.0)**.
-
-Puoi:
-
-* **Condividere** — copiare e ridistribuire il materiale in qualsiasi formato o mezzo.
-* **Adattare** — remixare, trasformare e sviluppare il materiale.
-
-A condizione di:
-
-* **Attribuzione** — devi fornire un’adeguata attribuzione all’autore originale (Davide Nasato / [davidegat](https://github.com/davidegat)), includendo un link alla licenza.
-* **Non commerciale** — non puoi utilizzare il materiale per scopi commerciali.
-
-👉 Testo completo della licenza:
-[https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+Creative Commons – Attribuzione – Non Commerciale 4.0 Internazionale (CC BY-NC 4.0)  
+Autore: **Davide Nasato** ([davidegat](https://github.com/davidegat))  
+Licenza completa: https://creativecommons.org/licenses/by-nc/4.0/
 
 ---
 
-## English Version
+# Gat News Ticker – ESP32-S3 Panel-4848S040
 
-# Gat News Ticker (ESP32-4848S040)
-
-News ticker for the **ESP32-4848S040** panel.
-
-<img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299"
-     width="500">
-
-## Hardware requirements
-
-* Board: ESP32-4848S040
+RSS news ticker for the ESP32-S3 4848S040 panel (480×480 ST7701) with Web UI configuration.
 
 ---
 
-## Dependencies (Arduino IDE / PlatformIO)
+## Description
 
-* `Arduino_GFX_Library`
-* `DNSServer`
-* `WebServer` (ESP32)
-* `WiFi` (ESP32)
-* `HTTPClient`
-* `Preferences`
+Displays real-time RSS news feeds on the screen, with an integrated Web UI to edit up to eight feeds with per-feed limits.  
+Configuration is stored in non-volatile memory (NVS).
 
 ---
 
-## Build: recommended settings (Arduino IDE)
+## Main Features
 
-* Board: **ESP32S3 Dev Module**
-* USB CDC On Boot: **Enabled**
-* Flash Size: **8MB** (or the capacity of your module)
-* PSRAM: **Enabled** (if available)
-* Upload Speed: **921600** (or 460800 if unstable)
-* Partition Scheme: **Default 4MB/8MB** (matching your module)
-
----
-
-## RSS feed configuration
-
-The feeds are in the source file at the top (`FEEDS`):
-
-```cpp
-const char* FEEDS[4] = {
-  "https://www.ansa.it/sito/ansait_rss.xml",
-  "https://www.ilsole24ore.com/rss/mondo.xml",
-  "https://www.ilsole24ore.com/rss/italia.xml",
-  "https://www.fanpage.it/feed/"
-};
-```
-
-* You can **replace** one or more URLs; if some are **missing** (empty string), the app **skips** that slot without errors.
-* After changing the URLs and **reprogramming**, you **do not need to reconfigure Wi-Fi**: the credentials remain stored in NVS
-  and will be reused automatically.
+- 480×480 display driven by **Arduino_GFX_Library** (ST7701 type9).
+- UI with blue header bar, yellow text, white news, green separators.
+- Four news per page with automatic switch every 30 seconds.
+- Auto-refresh every 10 minutes and instant refresh after saving from Web UI.
+- Captive portal for Wi-Fi setup (AP mode only).
+- Single `/rss` page to configure up to eight feeds with individual limits.
+- Settings stored in **NVS** (`url0..url7`, `limit0..limit7`, `n`).
 
 ---
 
-## First run / Wi-Fi provisioning
+## Operating Modes
 
-1. If saved credentials are not found, the module starts an **Access Point** (SSID like `PANEL-XXXX`) and a **captive portal**.
-2. Connect to the AP from your phone/PC using the QR code on screen. A page opens where you can enter your network **SSID** and
-   **Password**.
-3. The credentials are saved; the device restarts and connects to the network.
+### Access Point (AP)
+- Started only when no Wi-Fi credentials are stored.
+- SSID like `PANEL-XXXX`, password `panelsetup`.
+- Captive portal page for entering SSID and password.
 
-> If you recompile changing only the feeds, **the credentials remain**: you do not have to sign in to your home Wi-Fi again.
+### Station (STA)
+- Automatically connects to saved network.
+- Web UI available at `http://<IP>/rss`.
+- Inline save confirmation and instant display refresh.
+
+---
+
+## Dependencies
+
+- Arduino_GFX_Library  
+- DNSServer  
+- WebServer (ESP32)  
+- WiFi (ESP32)  
+- HTTPClient  
+- Preferences
+
+---
+
+## Build
+
+- Board: **ESP32S3 Dev Module**
+- USB CDC On Boot: Enabled
+- Flash Size: 8MB (or module capacity)
+- PSRAM: Enabled (if available)
+- Upload Speed: 921600 (or 460800 if unstable)
+- Partition Scheme: Default 4MB/8MB
+
+---
+
+## Workflow
+
+1. On boot, tries to connect to Wi-Fi; if it fails, starts AP with captive portal.
+2. In STA mode, syncs time via NTP and loads RSS feeds.
+3. Displays news, switching page every 30 seconds.
+4. Refreshes feeds every 10 minutes or immediately after saving from Web UI.
 
 ---
 
 ## License
 
-This project is distributed under the
-**Creative Commons Attribution – Non Commercial 4.0 International (CC BY-NC 4.0)** license.
-
-You may:
-
-* **Share** — copy and redistribute the material in any medium or format.
-* **Adapt** — remix, transform, and build upon the material.
-
-Under the following terms:
-
-* **Attribution** — you must give appropriate credit to the original author (Davide Nasato /
-  [davidegat](https://github.com/davidegat)), including a link to the license.
-* **Non Commercial** — you may not use the material for commercial purposes.
-
-👉 Full license text:
-[https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+Creative Commons – Attribution – Non Commercial 4.0 International (CC BY-NC 4.0)  
+Author: **Davide Nasato** ([davidegat](https://github.com/davidegat))  
+Full license: https://creativecommons.org/licenses/by-nc/4.0/
