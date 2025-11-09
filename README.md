@@ -7,7 +7,7 @@
 
 ---
 
-## 📘 Descrizione
+## Descrizione
 
 Questo repository raccoglie **esperimenti e strumenti software** per il **pannello ESP32-S3 Panel-4848S040**, che integra:
 
@@ -22,8 +22,7 @@ Gli sketch qui presenti esplorano diverse funzioni del pannello: grafica RGB, in
 
 ## ⚙️ Hardware supportato
 
-**Scheda:** ESP32-S3 Panel-4848S040
-📖 [Documentazione HomeDing](https://homeding.github.io/boards/esp32s3/panel-4848S040.htm)
+**Scheda:** ESP32-S3 Panel-4848S040 [Documentazione HomeDing](https://homeding.github.io/boards/esp32s3/panel-4848S040.htm)
 
 ### Pin principali (configurazione standard)
 
@@ -38,12 +37,9 @@ Gli sketch qui presenti esplorano diverse funzioni del pannello: grafica RGB, in
 | Canali B       | 4, 5, 6, 7, 15                             |
 | SD (FSPI)      | CS = 42, MOSI = 47, MISO = 41, SCK = 48    |
 
-> ⚠️ I pin del display e del touch sono già configurati correttamente.
-> Evita modifiche a meno di necessità specifiche.
-
 ---
 
-## 🧾 Licenza
+## Licenza
 
 Questo progetto è distribuito con licenza
 **Creative Commons – Attribuzione – Non Commerciale 4.0 Internazionale (CC BY-NC 4.0)**.
