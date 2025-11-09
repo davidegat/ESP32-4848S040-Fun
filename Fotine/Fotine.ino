@@ -8,12 +8,6 @@
   - SD su HSPI: salvataggio e lettura immagini.
   - Download immagini via proxy (JPEG baseline), controllo SOF0.
   - Cambio immagine ogni 60 s.
-
-  In questo passaggio sono stati:
-  - Aggiunti commenti più esplicativi.
-  - Rimossi elementi inutilizzati e rami morti.
-  - Evitate ridondanze (es. doppia variabile lastHeaderUpdate nello scope).
-  Nessuna modifica al comportamento o alle API di pilotaggio/moduli/rete/download.
 */
 
 #include <Arduino.h>
@@ -77,7 +71,6 @@ uint32_t sdReinitTime = 0;
 const uint32_t SD_REINIT_DELAY = 2000;    // ms
 
 // ----------------------------- Bus & Pannello LCD -----------------------------
-// Bus software richiesto dalla libreria (non usato per RGB ma passato al costruttore)
 Arduino_DataBus *bus = new Arduino_SWSPI(
   GFX_NOT_DEFINED, 39, 48, 47, GFX_NOT_DEFINED // DC, SCK, MOSI, MISO, CS
 );
@@ -137,7 +130,6 @@ static void panelKickstart() {
 }
 
 // ----------------------------- NTP helpers -----------------------------
-// Attende un tempo “valido” (anno > 2020) dopo configTime
 static bool waitForValidTime(uint32_t timeoutMs = 8000) {
   uint32_t t0 = millis();
   time_t now = 0; struct tm info;
@@ -185,7 +177,6 @@ static void drawHeader() {
 }
 
 // ----------------------------- Captive portal -----------------------------
-// Converte un IPAddress in stringa dotted
 static String ipToString(IPAddress ip) {
   return String(ip[0]) + "." + ip[1] + "." + ip[2] + "." + ip[3];
 }
@@ -324,7 +315,6 @@ static bool isSDCurrentlyPresent() {
 }
 
 // ----------------------------- Decoder JPEG -----------------------------
-// Callback del decoder: clippa la porzione che invaderebbe l'header e disegna in RGB565
 static bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
   if (y < HEADER_H) {
     int16_t skipRows = HEADER_H - y;
@@ -338,8 +328,7 @@ static bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* b
   return true;
 }
 
-// ----------------------------- Download → SD con sniff JPEG -----------------------------
-// Scrive lo stream su SD e verifica il magic JPEG (0xFF 0xD8) all'inizio.
+// ----------------------------- Download → SD -----------------------------
 static bool writeStreamToSD_sniffJPEG(const char* path, WiFiClient* stream, int content_len) {
   File f = SD.open(path, FILE_WRITE);
   if (!f) { Serial.println("[SD] open write FAILED"); return false; }
@@ -382,7 +371,6 @@ static bool writeStreamToSD_sniffJPEG(const char* path, WiFiClient* stream, int 
   return total > 0;
 }
 
-// Effettua GET con redirect seguiti, accetta solo Content-Type contenente “jpeg”
 static bool downloadJPEGToSD() {
   String url = String(IMAGE_PROXY_BASE) + "&t=" + String(millis()); // cache-buster
 
@@ -426,7 +414,6 @@ static bool downloadJPEGToSD() {
 }
 
 // ----------------------------- Validazione JPEG baseline -----------------------------
-// Cerca SOF0 (0xFFC0) ed esclude SOF2 (progressive, 0xFFC2)
 static bool isJpegBaselineOnSD(const char* path) {
   File f = SD.open(path, FILE_READ);
   if (!f) { Serial.println("[SD] open read FAILED"); return false; }
@@ -450,8 +437,6 @@ static bool isJpegBaselineOnSD(const char* path) {
 
 // ----------------------------- Rendering JPEG da SD -----------------------------
 static bool drawJPEGFromSD() {
-  // Pulisce l’area sotto l’header
-  gfx->fillRect(0, HEADER_H, 480, 480 - HEADER_H, RGB565_BLACK);
 
   // Decoder configurato per RGB565 nativi e scala 1:1
   TJpgDec.setSwapBytes(false);
@@ -490,7 +475,6 @@ static bool downloadAndShowFromSD() {
   return drawJPEGFromSD();
 }
 
-// Aggiornamento header periodico (gestito a livello globale, no duplicati locali)
 static uint32_t lastHeaderUpdate = 0;
 
 // ----------------------------- Arduino: setup/loop -----------------------------
@@ -545,9 +529,8 @@ void setup() {
   lastHeaderUpdate = millis();
   lastImageChange  = millis();
 
-  // Primo fetch/draw se in STA e SD pronta
   if (!isAPMode && WiFi.status() == WL_CONNECTED && sd_ok && sdCardPresent) {
-    (void)downloadAndShowFromSD(); // risultato non usato: lo stato è comunque visivo/log
+    (void)downloadAndShowFromSD(); 
   }
 
   drawHeader();
