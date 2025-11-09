@@ -14,6 +14,117 @@
 
 ---
 
+## English Version
+
+# ESP32-S3 Panel-4848S040 · Experiments & Fun
+**Author:** Davide Nasato (gat)
+
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/fa71b786-9da7-488c-a8c5-b9a4eecb2e9e" width="220" alt="Front view of the ESP32-S3 panel"></td>
+    <td><img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299" width="220" alt="Touch interface in action"></td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/233a7806-4e2d-4e74-b4c7-6af3fe28045c" width="220" alt="RGB graphics example on the display"></td>
+    <td><img src="https://github.com/user-attachments/assets/be0071e5-bf8f-4652-ad98-f1517c20733a" width="220" alt="Application with QR codes"></td>
+  </tr>
+</table>
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Included Projects](#included-projects)
+3. [Supported Hardware](#supported-hardware)
+4. [Arduino IDE Setup](#arduino-ide-setup)
+5. [License](#license-1)
+
+---
+
+## Overview
+
+This repository gathers **experiments and software tools** for the **ESP32-S3 Panel-4848S040**, which integrates:
+
+* **ESP32-S3 microcontroller**;
+* **480×480 IPS display** with **ST7701** controller;
+* **GT911 capacitive touch** panel;
+* **microSD slot** connected via **FSPI**.
+
+The sketches explore RGB graphics, touch interfaces, microSD storage, and backlight control, providing ready-to-adapt examples.
+
+---
+
+## Included Projects
+
+* **`ESP32-S3-HelloWorld/`** – “Hello World” sample to quickly check the display and toolchain.
+* **`Fotine/`** – Wi-Fi photo frame that periodically downloads images and shows them on the panel.
+* **`NewsTicker/`** – News ticker powered by RSS feeds with Wi-Fi configuration through a captive portal.
+* **`PartenzeCH/`** – Departure board for Swiss transportation, updating from public APIs with a touch interface.
+* **`Pixxellata/`** – Pixel art editor featuring a touch palette and microSD saving in JPEG/BMP.
+* **`QuadrantiOraQuadra/`** – Collection of watch faces compatible with the OraQuadra Nano v1.3 project.
+* **`RandomYoutube/`** – Generator of random YouTube links and QR codes for display experiments on the panel.
+
+---
+
+## Supported Hardware
+
+**Board:** ESP32-S3 Panel-4848S040 — [HomeDing Documentation](https://homeding.github.io/boards/esp32s3/panel-4848S040.htm)
+
+### Key pins (standard configuration)
+
+| Function         | Pins                                       |
+| ---------------- | ------------------------------------------- |
+| I²C Touch        | SDA = 19, SCL = 45                          |
+| Backlight        | 38 (PWM LEDC)                               |
+| SWSPI (ST7701)   | CS = 39, SCK = 48, MOSI = 47                |
+| RGB Panel        | DE = 18, VSYNC = 17, HSYNC = 16, PCLK = 21  |
+| R Channels       | 11, 12, 13, 14, 0                           |
+| G Channels       | 8, 20, 3, 46, 9, 10                         |
+| B Channels       | 4, 5, 6, 7, 15                              |
+| SD (FSPI)        | CS = 42, MOSI = 47, MISO = 41, SCK = 48     |
+
+---
+
+## Arduino IDE Setup
+
+The following Arduino IDE settings work for most of the projects in this repository.
+
+### Build Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| **USB CDC On Boot** | Disabled |
+| **CPU Frequency** | 240MHz (WiFi) |
+| **Core Debug Level** | None |
+| **USB DFU On Boot** | Disabled |
+| **Erase All Flash Before Sketch Upload** | Disabled |
+| **Events Run On** | Core 1 |
+| **Flash Mode** | QIO 80MHz |
+| **Flash Size** | 4MB (32Mb) |
+| **JTAG Adapter** | Disabled |
+| **Arduino Runs On** | Core 1 |
+| **USB Firmware MSC On Boot** | Disabled |
+| **Partition Scheme** | Huge APP (3MB No OTA/1MB SPIFFS) |
+| **PSRAM** | OPI PSRAM |
+| **Upload Mode** | UART0 / Hardware CDC |
+| **Upload Speed** | 921600 |
+| **USB Mode** | Hardware CDC and JTAG |
+
+> **Note:** install ESP32 support in the Arduino IDE through the Board Manager before compiling the sketches.
+
+---
+
+## License
+
+This project is distributed under the **Creative Commons – Attribution – Non Commercial 4.0 International (CC BY-NC 4.0)** license.
+
+You may share and adapt it freely, **crediting the author** (Davide Nasato / [davidegat](https://github.com/davidegat)) and **excluding commercial use**.
+
+🔗 [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+
+---
+
 ## Indice
 
 1. [Panoramica](#panoramica)
