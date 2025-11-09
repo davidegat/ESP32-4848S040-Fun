@@ -144,3 +144,159 @@ Testo completo: [https://creativecommons.org/licenses/by-nc/4.0/](https://creati
 ## Disclaimer
 
 Software fornito “così com’è”. Verifica i termini d’uso di `transport.opendata.ch` prima della distribuzione.
+
+---
+
+## English Version
+
+# PartenzeCH
+
+Real-time viewer for Swiss public transport schedules on the **ESP32-S3 4848S040** with ST7701 panel (init *type9*). It shows the
+next connections between two Swiss stations using the **transport.opendata.ch** public API, featuring **Wi-Fi captive portal**,
+**web-based configuration**, **NTP** synchronisation, route **presets stored in NVS**, and **preset cycling via touch** (GT911).
+
+<img src="https://github.com/user-attachments/assets/233a7806-4e2d-4e74-b4c7-6af3fe28045c" width="500">
+
+---
+
+## Features
+
+### Network & Portal
+
+* **STA + NVS**: attempts to connect using credentials saved in `NVS` (`wifi/ssid`, `wifi/pass`).
+* **Fallback AP + Captive Portal** if no credentials are found:
+  * SSID: `PANEL-XXXX` (last 2 MAC bytes), **pwd**: `panelsetup`.
+  * Wi-Fi configuration page with NVS storage and **automatic reboot**.
+  * Captive DNS to intercept the first navigation.
+
+### Route configuration via Web
+
+* Page `http://<IP>/route`:
+  * **Departure** and **Arrival** fields saved in `NVS` (`route/from`, `route/to`).
+  * Customisable **Refresh (s)** saved in `route/refresh`.
+  * **Instant update** of the panel after saving.
+  * **Preset management** (see below).
+* **Fallback** route: *Bellinzona → Lugano*.
+
+### Route presets (NVS) + Touch cycle
+
+* Presets stored in the `NVS` namespace `presets` as a JSON list (`presets/list`).
+* **Web UI**: add/edit/delete presets; changes are applied immediately to the display.
+* **GT911 touch**:
+  * **Single tap**: cycle through the presets in RAM (**without writing to NVS**) by tapping the right and left edges.
+
+### Departure board
+* Columns: **TIME | LINE | DURATION | TRANSFERS**.
+* **“Within 60 s” filter**: discards departures that occur right now or within 60 seconds.
+* **Delays**: if an estimated delay is present, the **row is drawn with red text** (otherwise white).
+* Data area background in **blue**, mimicking Swiss public transport displays.
+
+### Persistence
+* **Wi-Fi**: `wifi/ssid`, `wifi/pass`.
+* **Route**: `route/from`, `route/to`, `route/refresh` (seconds).
+* **Presets**: `presets/list` (JSON array of `{label, from, to}`).
+
+---
+
+## Requirements
+
+### Hardware
+
+* **ESP32-S3 Panel-4848S040** (pins/bus already configured in the sketch).
+* **GT911 touch** (INT/RST optional: if missing, use `-1`).
+
+### Software / Arduino libraries
+* **ESP32 core** from Espressif (tested with **2.0.17** or compatible).
+* **Arduino_GFX_Library** (ST7701 *type9* panel + `Arduino_ESP32RGBPanel`).
+* **ArduinoJson** **7.x** (tested with 7.x).
+* **TAMC_GT911** (touch driver).
+* **WiFi**, **WebServer**, **DNSServer**, **HTTPClient**, **WiFiClientSecure**.
+* `time.h` for NTP.
+
+> **TLS note:** HTTPS requests use `WiFiClientSecure.setInsecure()`.
+
+---
+
+## Installation & first boot
+
+1. Build and flash with **Board**: ESP32S3 (Dev Module) and enable PSRAM if available.
+2. At boot:
+
+   * In **STA** mode with valid credentials → the interface appears immediately and data is downloaded.
+   * If **no credentials** → **AP + Captive Portal**:
+
+     * Connect to **`PANEL-XXXX`**, **pwd** `panelsetup`.
+     * Enter SSID/password and save (automatic reboot).
+     * If the popup does not appear, open `http://192.168.4.1/` manually.
+
+---
+
+## Route configuration
+
+* Go to `http://<IP>/route` (available both in AP and STA modes).
+* Enter **Departure** and **Arrival** (e.g. “Bellinzona”, “Mendrisio”).
+* Set **Refresh (s)** between **60** and **3600** (default **300**).
+* Save → the display updates **immediately**.
+
+---
+
+## Presets: web + touch
+
+* **Web**: “Presets” section to create/edit/delete entries (max 12).
+* **Touch**: **single tap** cycles the presets **in memory** (no NVS writes).
+
+---
+
+## Automatic updates
+
+* Data download: every **`g_refreshSec`** (default **300 s**).
+* Header/date-time refresh: roughly **30 s**.
+* The “within 60 s” filter avoids showing departures that are about to expire.
+
+> **Request budget:** 300 s ≈ **288 requests/day** per panel (well below typical limits, which are 1000). Reduce the frequency if
+> you use multiple units or if you update presets frequently.
+
+---
+
+## Security & privacy
+
+* Wi-Fi credentials stored in **NVS** (non-volatile).
+* HTTPS with **verification disabled** (`setInsecure()`): simple and common in embedded scenarios, but in sensitive contexts load
+  the **CA** and enable certificate verification.
+
+---
+
+## Troubleshooting
+
+* **NET ERR: Wi-Fi**
+  Check SSID/password. If needed, return to AP mode by clearing the credentials or reflashing.
+
+* **HTTP/JSON ERR**
+  Internet connectivity is missing or the response is unexpected. Increase the timeout, verify DNS, and check the
+  **`DynamicJsonDocument` size** (use 32 KB as in the sketch).
+
+* **No time in header**
+  Wait for NTP synchronisation. The header is redrawn periodically.
+
+* **Portal does not open**
+  Manually browse to `http://192.168.4.1/` while connected to the AP.
+
+---
+
+## Credits
+
+* **Data**: transport.opendata.ch
+
+---
+
+## License
+
+Distributed under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)** license.
+Use, modification, and redistribution are allowed **for non-commercial purposes** with **attribution**.
+Full text: [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+
+---
+
+## Disclaimer
+
+Software provided “as is”. Check the terms of use of `transport.opendata.ch` before distributing.

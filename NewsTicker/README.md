@@ -79,3 +79,91 @@ A condizione di:
 
 👉 Testo completo della licenza:
 [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+
+---
+
+## English Version
+
+# Gat News Ticker (ESP32-4848S040)
+
+News ticker for the **ESP32-4848S040** panel.
+
+<img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299"
+     width="500">
+
+## Hardware requirements
+
+* Board: ESP32-4848S040
+
+---
+
+## Dependencies (Arduino IDE / PlatformIO)
+
+* `Arduino_GFX_Library`
+* `DNSServer`
+* `WebServer` (ESP32)
+* `WiFi` (ESP32)
+* `HTTPClient`
+* `Preferences`
+
+---
+
+## Build: recommended settings (Arduino IDE)
+
+* Board: **ESP32S3 Dev Module**
+* USB CDC On Boot: **Enabled**
+* Flash Size: **8MB** (or the capacity of your module)
+* PSRAM: **Enabled** (if available)
+* Upload Speed: **921600** (or 460800 if unstable)
+* Partition Scheme: **Default 4MB/8MB** (matching your module)
+
+---
+
+## RSS feed configuration
+
+The feeds are in the source file at the top (`FEEDS`):
+
+```cpp
+const char* FEEDS[4] = {
+  "https://www.ansa.it/sito/ansait_rss.xml",
+  "https://www.ilsole24ore.com/rss/mondo.xml",
+  "https://www.ilsole24ore.com/rss/italia.xml",
+  "https://www.fanpage.it/feed/"
+};
+```
+
+* You can **replace** one or more URLs; if some are **missing** (empty string), the app **skips** that slot without errors.
+* After changing the URLs and **reprogramming**, you **do not need to reconfigure Wi-Fi**: the credentials remain stored in NVS
+  and will be reused automatically.
+
+---
+
+## First run / Wi-Fi provisioning
+
+1. If saved credentials are not found, the module starts an **Access Point** (SSID like `PANEL-XXXX`) and a **captive portal**.
+2. Connect to the AP from your phone/PC using the QR code on screen. A page opens where you can enter your network **SSID** and
+   **Password**.
+3. The credentials are saved; the device restarts and connects to the network.
+
+> If you recompile changing only the feeds, **the credentials remain**: you do not have to sign in to your home Wi-Fi again.
+
+---
+
+## License
+
+This project is distributed under the
+**Creative Commons Attribution – Non Commercial 4.0 International (CC BY-NC 4.0)** license.
+
+You may:
+
+* **Share** — copy and redistribute the material in any medium or format.
+* **Adapt** — remix, transform, and build upon the material.
+
+Under the following terms:
+
+* **Attribution** — you must give appropriate credit to the original author (Davide Nasato /
+  [davidegat](https://github.com/davidegat)), including a link to the license.
+* **Non Commercial** — you may not use the material for commercial purposes.
+
+👉 Full license text:
+[https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)

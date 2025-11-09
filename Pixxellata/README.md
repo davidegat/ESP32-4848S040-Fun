@@ -143,3 +143,149 @@ A condizione di:
 
 👉 Testo completo della licenza:
 [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+
+---
+
+## English Version
+
+**Note:** software created with the help of language models (LLMs)
+
+<img src="https://github.com/user-attachments/assets/be0071e5-bf8f-4652-ad98-f1517c20733a"
+     width="500">
+
+
+<img src="https://github.com/user-attachments/files/23421338/pixel_925197.bmp"
+     width="500">
+
+## Overview
+
+This sketch turns the **ESP32-S3 Panel-4848S040** (480×480 display with **ST7701** controller and **GT911** touch) into a simple
+**pixel art** app:
+
+* **Grid on the left (400×480)**: 20 columns × 24 rows, 20×20 px cells.
+* **Palette on the right (80 px)**: 5 selectable colours.
+* **Bottom command bar (centred)**:
+
+  * **CLEAR**: clears the entire grid.
+  * **EXPORT**: saves the grid area (400×480) to **microSD** as **JPEG** (if the *JPEGENC* library is available), otherwise as
+    **BMP** (fallback).
+
+Includes **colour toggling**: tapping an already coloured cell turns it white so it can be recoloured later.
+Touch is handled with **edge detection** + **cooldown** to avoid double taps or multiple triggers.
+
+---
+
+## Supported hardware
+
+* Board: **ESP32-S3 Panel-4848S040** (see the [HomeDing datasheet](https://homeding.github.io/boards/esp32s3/panel-4848S040.htm)).
+* Display: **ST7701** (RGB + SWSPI init).
+* Touch: **GT911** over I²C.
+* microSD: **SPI**.
+
+### Key pins
+```text
+I2C (touch): SDA=19, SCL=45
+Backlight:   GFX_BL=38 (LEDC)
+SWSPI (ST7701 cmd): CS=39, SCK=48, MOSI=47
+RGB panel:   DE=18, VSYNC=17, HSYNC=16, PCLK=21
+             R: 11,12,13,14,0
+             G: 8,20,3,46,9,10
+             B: 4,5,6,7,15
+SD (SPI):    CS=42, SCK=48, MOSI=47, MISO=41 (FSPI)
+```
+
+> **Important:** Do not change the display pins: the driver already works correctly with these values.
+
+---
+
+## Required libraries
+
+* **Arduino_GFX_Library** (ST7701 display)
+* **TAMC_GT911** (GT911 touch)
+* **SD** and **SPI** (bundled with the ESP32 core)
+* **JPEGENC** *(optional)* for **JPEG** export
+  If absent, export falls back to **24-bit BMP**.
+
+---
+
+## Build and flash
+
+* **Board**: ESP32S3 Dev Module (or an equivalent profile for your panel)
+* **ESP32 core**: recommended ≥ **2.0.17**
+* **PSRAM**: enable if available (not strictly required here)
+* **Upload speed**: choose a stable value for your setup
+* **Partition Scheme**: standard is fine
+
+Compile and flash the sketch from the Arduino IDE.
+
+---
+
+## Usage
+
+* **Drawing**: tap a cell in the grid to colour or clear it (toggle).
+* **Colour selection**: tap one of the 5 vertical “buttons” in the right column.
+* **CLEAR**: tap the left button in the bottom bar (centred).
+* **EXPORT**: tap the right button in the bottom bar.
+
+  * During export, the message **“Esportazione…”** appears.
+  * Once finished, it shows **“Export OK”** (or **“Export FAIL”**).
+
+### Generated files
+
+* File name: `/pixel_<millis>.jpg` (with *JPEGENC*) or `/pixel_<millis>.bmp`
+* Content: only the **400×480 grid area** (excluding the palette), with black grid lines and the cell fills.
+
+---
+
+## Technical notes
+
+* **Debounce/edge**: touch triggers on *touch down* (transition from not touched → touched), with a **cooldown** to avoid rapid
+  repeated activations.
+* **Touch mapping**: GT911 coordinates are rotated and mapped to the 480×480 portrait orientation.
+* **SD**: initialised on the **FSPI** bus using the pins listed above.
+
+---
+
+## Inspirations and references
+
+* Inspired by the work of **VolosR**:
+  [https://github.com/VolosR/MakerfabsPixelArt/tree/main/PixelArt](https://github.com/VolosR/MakerfabsPixelArt/tree/main/PixelArt)
+* Also inspired by **Survival Hacking**:
+  [https://www.youtube.com/@SurvivalHacking](https://www.youtube.com/@SurvivalHacking)
+
+Thanks to both for the inspiration and for sharing ideas.
+
+---
+
+## Troubleshooting
+
+* **Message “Più di una libreria trovata per SD.h”**
+  This is normal: the IDE may include both the ESP32 core SD and an external one.
+  The ESP32 core version is used (which is fine).
+* **Double export or repeated messages**
+  Already handled with edge + cooldown. If you notice issues, adjust `TAP_COOLDOWN_MS` in the sketch.
+* **SD not initialised**
+  Check **FAT32** formatting and the quality/speed of the microSD card.
+* **Touch offset**
+  Verify the orientation (`ts.setRotation(0)`) and the GT911 dimensions set in the `TAMC_GT911` object.
+
+---
+
+## License
+
+This project is distributed under the
+**Creative Commons Attribution – Non Commercial 4.0 International (CC BY-NC 4.0)** license.
+
+You may:
+
+* **Share** — copy and redistribute the material in any medium or format.
+* **Adapt** — remix, transform, and build upon the material.
+
+Under the following terms:
+
+* **Attribution** — you must credit the original author (Davide Nasato /
+  [davidegat](https://github.com/davidegat)) and include a link to the license.
+* **Non Commercial** — you may not use the material for commercial purposes.
+
+👉 Full license text:
+[https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
