@@ -1,8 +1,8 @@
 # ESP32-S3 Panel-4848S040 · Experiments & Fun
 **Autore:** Davide Nasato (gat)
 
-|<img src="https://github.com/user-attachments/assets/fa71b786-9da7-488c-a8c5-b9a4eecb2e9e" width="300" height="300">|<img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299" width="300">|
-|<img src="https://github.com/user-attachments/assets/233a7806-4e2d-4e74-b4c7-6af3fe28045c" width="300">|<img src="https://github.com/user-attachments/assets/be0071e5-bf8f-4652-ad98-f1517c20733a" width="300">|
+<img src="https://github.com/user-attachments/assets/fa71b786-9da7-488c-a8c5-b9a4eecb2e9e" width="300" height="300"> <img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299" width="300">
+<img src="https://github.com/user-attachments/assets/233a7806-4e2d-4e74-b4c7-6af3fe28045c" width="300"> <img src="https://github.com/user-attachments/assets/be0071e5-bf8f-4652-ad98-f1517c20733a" width="300">
 
 ---
 
