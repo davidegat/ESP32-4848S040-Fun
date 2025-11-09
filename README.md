@@ -19,26 +19,13 @@
 # ESP32-S3 Panel-4848S040 · Experiments & Fun
 **Author:** Davide Nasato (gat)
 
-<table>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/fa71b786-9da7-488c-a8c5-b9a4eecb2e9e" width="220" alt="Front view of the ESP32-S3 panel"></td>
-    <td><img src="https://github.com/user-attachments/assets/00f90700-a2e5-4562-84fd-fa016f371299" width="220" alt="Touch interface in action"></td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/233a7806-4e2d-4e74-b4c7-6af3fe28045c" width="220" alt="RGB graphics example on the display"></td>
-    <td><img src="https://github.com/user-attachments/assets/be0071e5-bf8f-4652-ad98-f1517c20733a" width="220" alt="Application with QR codes"></td>
-  </tr>
-</table>
-
----
-
 ## Table of Contents
 
 1. [Overview](#overview)
 2. [Included Projects](#included-projects)
 3. [Supported Hardware](#supported-hardware)
 4. [Arduino IDE Setup](#arduino-ide-setup)
-5. [License](#license-1)
+5. [License](#license)
 
 ---
 
