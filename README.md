@@ -20,7 +20,7 @@ Gli sketch qui presenti esplorano diverse funzioni del pannello: grafica RGB, in
 
 ---
 
-## ⚙️ Hardware supportato
+## Hardware supportato
 
 **Scheda:** ESP32-S3 Panel-4848S040 [Documentazione HomeDing](https://homeding.github.io/boards/esp32s3/panel-4848S040.htm)
 
