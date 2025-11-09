@@ -2,6 +2,8 @@
 
 **Fotine** è un **photo frame per ESP32-S3 Panel-4848S040** che scarica e visualizza automaticamente immagini da internet su un display 480×480.
 
+<img src="https://github.com/user-attachments/assets/c42f08eb-92c8-4329-9cfa-1c32d923c6d2" width="500">
+     
 ## Descrizione
 
 Lo sketch:
