@@ -25,7 +25,7 @@ Usa l’API pubblica **transport.opendata.ch** per mostrare le prossime connessi
   
 * **UI**:
   * **Header rosso**: “PARTENZE” + **data/ora** allineata a destra.
-  * **Barra rotta** sotto l’header con “da <FROM> a <TO>”.
+  * **Barra rotta** sotto l’header con il tragitto.
   * Sub-header colonne con separatore, area dati con righe divisorie.
   
 * **Persistenza**: Wi-Fi e rotta in **NVS** (sopravvivono ai reflashing).
