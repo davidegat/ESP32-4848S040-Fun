@@ -39,6 +39,35 @@ Gli sketch qui presenti esplorano diverse funzioni del pannello: grafica RGB, in
 
 ---
 
+## Impostazioni IDE
+
+Le seguenti impostazioni nell'Arduino IDE dovrebbero funzionare per la maggior parte dei progetti:
+
+### Parametri di Compilazione
+
+| Parametro | Valore |
+|-----------|--------|
+| **USB CDC On Boot** | Disabled |
+| **CPU Frequency** | 240MHz (WiFi) |
+| **Core Debug Level** | None |
+| **USB DFU On Boot** | Disabled |
+| **Erase All Flash Before Sketch Upload** | Disabled |
+| **Events Run On** | Core 1 |
+| **Flash Mode** | QIO 80MHz |
+| **Flash Size** | 4MB (32Mb) |
+| **JTAG Adapter** | Disabled |
+| **Arduino Runs On** | Core 1 |
+| **USB Firmware MSC On Boot** | Disabled |
+| **Partition Scheme** | Huge APP (3MB No OTA/1MB SPIFFS) |
+| **PSRAM** | OPI PSRAM |
+| **Upload Mode** | UART0 / Hardware CDC |
+| **Upload Speed** | 921600 |
+| **USB Mode** | Hardware CDC and JTAG |
+
+> **Nota:** Assicurarsi di avere installato il supporto per ESP32 nell'Arduino IDE tramite il Board Manager prima di procedere con la compilazione.
+
+---
+
 ## Licenza
 
 Questo progetto è distribuito con licenza
