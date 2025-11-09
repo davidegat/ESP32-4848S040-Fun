@@ -1,8 +1,10 @@
-# Gat Departures
+# Departures
 
 Visualizzatore partenze **realtime** per **ESP32-S3 4848S040**.
 Usa l’API pubblica **transport.opendata.ch** per mostrare le prossime connessioni tra due stazioni svizzere, con **captive portal Wi-Fi**, configurazione **via web** del viaggio, sincronizzazione **NTP**.
 
+<img src="https://github.com/user-attachments/assets/a3cd4cac-9d3b-4ccf-b821-af2244d70411"
+     width="500">
 ---
 
 ## Funzioni principali
