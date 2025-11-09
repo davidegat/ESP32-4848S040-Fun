@@ -2,6 +2,8 @@
 
 Visualizzatore di orario dei mezzi di trasporto svizzeri, in **realtime** per **ESP32-S3 4848S040** con pannello ST7701 (init *type9*). Mostra le prossime connessioni tra due stazioni svizzere usando l’API pubblica **transport.opendata.ch**, con **captive portal Wi-Fi**, configurazione **via web**, sincronizzazione **NTP**, **preset di rotta** in NVS e **ciclo preset via touch** (GT911).
 
+<img src="https://github.com/user-attachments/assets/233a7806-4e2d-4e74-b4c7-6af3fe28045c" width="500">
+
 ---
 
 ## Funzioni
