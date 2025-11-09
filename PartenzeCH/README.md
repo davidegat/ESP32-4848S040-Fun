@@ -1,148 +1,144 @@
 # PartenzeCH
 
-Visualizzatore partenze **realtime** per **ESP32-S3 4848S040**.
-Usa l’API pubblica **transport.opendata.ch** per mostrare le prossime connessioni tra due stazioni svizzere, con **captive portal Wi-Fi**, configurazione **via web** del viaggio, sincronizzazione **NTP**.
+Visualizzatore di orario dei mezzi di trasporto svizzeri, in **realtime** per **ESP32-S3 4848S040** con pannello ST7701 (init *type9*). Mostra le prossime connessioni tra due stazioni svizzere usando l’API pubblica **transport.opendata.ch**, con **captive portal Wi-Fi**, configurazione **via web**, sincronizzazione **NTP**, **preset di rotta** in NVS e **ciclo preset via touch** (GT911).
 
-<img src="https://github.com/user-attachments/assets/a3cd4cac-9d3b-4ccf-b821-af2244d70411"
-     width="500">
 ---
 
-## Funzioni principali
+## Funzioni
 
-* **Wi-Fi**:
-  * **Captive Portal** (SSID `PANEL-XXXX`, pwd `panelsetup`): pagina per inserire SSID e password, salvataggio in NVS e **riavvio automatico**.
+### Rete & Portale
 
-* **Configurazione rotta via Web**:
-  * Pagina `http://IP/route` con form **Partenza** e **Arrivo**.
-  * Salvataggio in NVS, **refresh istantaneo** del pannello.
-  * **Fallback** predefinito: *Bellinzona → Lugano*.
+* **STA + NVS**: tenta la connessione con credenziali salvate in `NVS` (`wifi/ssid`, `wifi/pass`).
+* **Fallback AP + Captive Portal** se non trova credenziali:
+  * SSID: `PANEL-XXXX` (ultimi 2 byte MAC), **pwd**: `panelsetup`.
+  * Pagina di configurazione Wi-Fi con salvataggio in NVS e **riavvio automatico**.
+  * DNS *captive* per intercettare la prima navigazione.
 
-* **NTP**: sincronizzazione una volta all’avvio (fuso CH/IT con ora legale).
+### Configurazione rotta via Web
 
-* **Tabella partenze**:
-  * Colonne: **ORA | LINEA | DURATA | CAMBI**.
+* Pagina `http://<IP>/route`:
+  * Campi **Partenza** e **Arrivo** con salvataggio in `NVS` (`route/from`, `route/to`).
+  * **Refresh (s)** personalizzabile (salvato in `route/refresh`).
+  * **Aggiornamento istantaneo** del pannello dopo il salvataggio.
+  * **Gestione preset** (vedi sotto).
+* **Fallback** iniziale: *Bellinzona → Lugano*.
 
+### Preset rotta (NVS) + Touch cycle
+
+* Preset memorizzati in `NVS` namespace `presets` dentro una JSON list (`presets/list`).
+* **Web UI**: aggiungi/modifica/elimina preset; applicazione immediata al display.
+* **Touch GT911**:
+  * **Tap singolo**: cicla i preset in RAM (**senza scrivere in NVS**) avanti e dietro toccando i bordi destro e sinistro.
   
-* **UI**:
-  * **Header rosso**: “PARTENZE” + **data/ora** allineata a destra.
-  * **Barra rotta** sotto l’header con il tragitto.
-  * Sub-header colonne con separatore, area dati con righe divisorie.
-  
-* **Persistenza**: Wi-Fi e rotta in **NVS** (sopravvivono ai reflashing).
+### Tabella partenze
+* Colonne: **ORA | LINEA | DURATA | CAMBI**.
+* **Filtro “entro 60 s”**: scarta la partenza nell’istante attuale o entro 60 s.
+* **Ritardi**: se presente ritardo stimato, la **riga viene disegnata con testo rosso** (altrimenti bianco).
+* Background area dati in **blu** stile display dei trasporti pubblici svizzeri.
+
+### Persistenza
+* **Wi-Fi**: `wifi/ssid`, `wifi/pass`.
+* **Rotta**: `route/from`, `route/to`, `route/refresh` (secondi).
+* **Preset**: `presets/list` (JSON con array di `{label, from, to}`).
 
 ---
 
 ## Requisiti
 
-* **Hardware**: ESP32-S3 Panel-4848S040 (bus/pin del progetto già impostati).
-* **Librerie Arduino**:
+### Hardware
 
-  * `Arduino_GFX_Library`
-  * `ArduinoJson` (testato con 7.x)
-  * Core **esp32** (testato con 2.0.17 o compatibile)
+* **ESP32-S3 Panel-4848S040** (pin/bus già impostati nello sketch).
+* Touch **GT911** (INT/RST opzionali: se non presenti, usare `-1`).
 
-* **Rete**: accesso a Internet (NTP + `transport.opendata.ch`).
+### Software / Librerie Arduino
+* **ESP32 core** Espressif (testato con **2.0.17** o compatibile).
+* **Arduino_GFX_Library** (pannello ST7701 *type9* + `Arduino_ESP32RGBPanel`).
+* **ArduinoJson** **7.x** (testato 7.x).
+* **TAMC_GT911** (driver touch).
+* **WiFi**, **WebServer**, **DNSServer**, **HTTPClient**, **WiFiClientSecure**.
+* `time.h` per NTP.
 
----
-
-## Primo avvio (Wi-Fi)
-
-1. Al boot lo sketch tenta la connessione **STA** con le credenziali in NVS.
-2. Se fallisce: avvia **AP + Captive Portal**
-   * SSID mostrato a schermo (`PANEL-XXXX`), password `panelsetup`.
-   * Si apre in automatico il portale; se non compare, visita `http://192.168.4.1/`.
-3. Inserisci **SSID** e **Password** → **Salva** → il modulo **si riavvia** e si collega in STA.
+> **Nota TLS**: le richieste HTTPS usano `WiFiClientSecure.setInsecure()`.
 
 ---
 
-## Configurare la rotta
+## Installazione & Primo avvio
 
-* Raggiungi `http://<ip-del-pannello>/route` (in STA o in AP).
+1. Compila e flasha con **Board**: ESP32S3 (Dev Module) e PSRAM attiva se disponibile.
+2. Al boot:
+
+   * Se in **STA** con credenziali valide → mostra subito interfaccia e scarica dati.
+   * Se **no credenziali** → **AP + Captive Portal**:
+
+     * Connettiti a **`PANEL-XXXX`**, **pwd** `panelsetup`.
+     * Compila SSID/password e salva (riavvio automatico).
+     * In caso di mancato popup, apri `http://192.168.4.1/`.
+
+---
+
+## Configurazione della rotta
+
+* Vai a `http://<IP>/route` (sia in AP sia in STA).
 * Compila **Partenza** e **Arrivo** (es. “Bellinzona”, “Mendrisio”).
-* Conferma con **OK**: i valori sono salvati in NVS e il display si aggiorna subito.
-* Se i campi restano vuoti, resta il **fallback Bellinzona → Mendrisio**.
+* Imposta **Refresh (s)** tra **60** e **3600** (default **300**).
+* Salva → aggiornamento **immediato** del display.
 
 ---
 
-## Come funziona il refresh
+## Preset: web + touch
 
-* Intervallo richieste API: **ogni 2 minuti** (costante `FETCH_EVERY`).
-* NTP sincronizzato a inizio esecuzione; l’orario in header si riallinea periodicamente.
-
-> **Nota limiti API**: a 1 richiesta ogni 2 minuti sono ~**720 richieste/giorno** (sotto il tetto tipico di 1000/giorno). Valuta un intervallo più ampio in caso di più pannelli.
+* **Web**: sezione “Preset” per creare/modificare/eliminare (max 12).
+* **Touch**: **tap singolo** cicla i preset **in memoria** (non scrive in NVS).
 
 ---
 
-## Personalizzazione rapida (costanti)
+## Aggiornamenti automatici
 
-Nel codice:
+* Scaricamento dati: ogni **`g_refreshSec`** (default **300 s**).
+* Aggiornamento header/data-time: ~**30 s**.
+* Il filtro “entro 60 s” evita di mostrare partenze che stanno “scadendo”.
 
-* **Intervallo aggiornamento**
+> **Budget richieste**: 300 s ≈ **288 richieste/giorno** per pannello (ampiamente sotto tetti tipici, il limite è 1000). Riduci la frequenza se usi più unità o se aggiorni di frequente cambiando i preset.
 
-  ```cpp
-  static const uint32_t FETCH_EVERY = 2UL * 60UL * 1000UL; // 2 minuti
-  ```
+---
 
-  Esempi: 5 min → `5UL * 60UL * 1000UL`.
+## Sicurezza & Privacy
 
-* **Numero righe visualizzate**
-
-  ```cpp
-  static const int ROWS_MAX = 11; // fino a 11 righe
-  ```
-
-  (L’URL API aggiunge un margine per compensare le righe filtrate.)
-
-* **Colori UI**: `RGB565_RED`, `RGB565_WHITE`, ecc.
-
-* **Filtro “entro 60 s”**: funzione `shouldSkipSoon(...)` (incluso fallback ISO HH:MM).
+* Credenziali Wi-Fi memorizzate in **NVS** (non volatile).
+* HTTPS con **verifica disabilitata** (`setInsecure()`): semplice e diffuso in embedded, ma in contesti sensibili carica la **CA** e abilita la verifica certificato.
 
 ---
 
 ## Risoluzione problemi
 
 * **NET ERR: Wi-Fi**
-  Perdita di connessione. Verifica SSID/pwd: rifai l’AP cancellando temporaneamente le credenziali in NVS o riprogrammando e impedendo la connessione STA.
+  Verifica SSID/password. Se serve, rientra in AP cancellando le credenziali o riflashando.
 
 * **HTTP/JSON ERR**
-  Timeout API o risposta inattesa. Controlla connettività Internet e stabilità DNS. Se hai ridotto la `DynamicJsonDocument` e compare errore di parsing, rialzala (es. 24–32 KB).
+  Connettività Internet assente o risposta inattesa. Aumenta il timeout, verifica DNS e **Dimensione `DynamicJsonDocument`** (usa 32 KB come nello sketch).
 
-* **L’orologio non appare**
-  NTP non ancora sincronizzato: lascia qualche secondo, l’header si riallinea in automatico.
+* **Nessuna ora in header**
+  Attendi la sincronizzazione NTP. L’header viene ridisegnato periodicamente.
 
-* **Portale Wi-Fi non si apre**
-  Connettiti all’AP e visita manualmente `http://192.168.4.1/`.
-
----
-
-## Privacy & sicurezza
-
-* Le credenziali Wi-Fi sono salvate in **NVS**.
-* Le richieste HTTPS verso `transport.opendata.ch` usano `WiFiClientSecure` con **`setInsecure()`** (si accetta il certificato senza verifica CA, pratica comune in ambienti embedded per semplicità). In contesti più rigidi caricare e validare la CA.
+* **Portal non si apre**
+  Apri manualmente `http://192.168.4.1/` quando connesso all’AP.
 
 ---
 
 ## Crediti
 
-* **Dati**: [transport.opendata.ch](https://transport.opendata.ch/)
-* **Grafica**: `Arduino_GFX_Library`
-* **JSON**: `ArduinoJson`
-* **ESP32 core** di Espressif
+* **Dati**: transport.opendata.ch
 
 ---
 
 ## Licenza
 
-Questo progetto è distribuito con licenza **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
-
-* **Consentito**: usare, modificare e **ridistribuire** il materiale **per scopi non commerciali**, con **attribuzione**.
-* **Non consentito**: uso **commerciale** senza permesso esplicito.
-* **Attribuzione richiesta**
-
-Testo completo della licenza: [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
+Distribuito con **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
+Consentito uso, modifica e ridistribuzione **non commerciale** con **attribuzione**.
+Testo completo: [https://creativecommons.org/licenses/by-nc/4.0/](https://creativecommons.org/licenses/by-nc/4.0/)
 
 ---
 
 ## Disclaimer
 
-Il software è fornito “così com’è”, senza garanzie di correttezza o disponibilità dei servizi di terze parti. Verifica i termini d’uso di `transport.opendata.ch` prima della distribuzione.
+Software fornito “così com’è”. Verifica i termini d’uso di `transport.opendata.ch` prima della distribuzione.
