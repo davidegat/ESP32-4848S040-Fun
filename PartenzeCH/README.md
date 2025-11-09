@@ -1,4 +1,4 @@
-# Departures
+# PartenzeCH
 
 Visualizzatore partenze **realtime** per **ESP32-S3 4848S040**.
 Usa l’API pubblica **transport.opendata.ch** per mostrare le prossime connessioni tra due stazioni svizzere, con **captive portal Wi-Fi**, configurazione **via web** del viaggio, sincronizzazione **NTP**.
