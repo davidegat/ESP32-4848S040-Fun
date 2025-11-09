@@ -20,6 +20,18 @@ Gli sketch qui presenti esplorano diverse funzioni del pannello: grafica RGB, in
 
 ---
 
+## Progetti inclusi
+
+* **`ESP32-S3-HelloWorld/`** – esempio "Hello World" per testare rapidamente il display e la toolchain.
+* **`Fotine/`** – cornice fotografica Wi-Fi che scarica periodicamente immagini e le mostra dal pannello.
+* **`NewsTicker/`** – ticker di notizie basato su feed RSS con configurazione Wi-Fi tramite captive portal.
+* **`PartenzeCH/`** – tabellone partenze per i trasporti svizzeri con aggiornamento da API pubbliche e interfaccia touch.
+* **`Pixxellata/`** – editor di pixel art con palette touch e salvataggio su microSD in JPEG/BMP.
+* **`QuadrantiOraQuadra/`** – raccolta di quadranti grafici compatibili con il progetto OraQuadra Nano v1.3.
+* **`RandomYoutube/`** – generatore di link e codici QR casuali di YouTube per esperimenti grafici sul pannello.
+
+---
+
 ## Hardware supportato
 
 **Scheda:** ESP32-S3 Panel-4848S040 [Documentazione HomeDing](https://homeding.github.io/boards/esp32s3/panel-4848S040.htm)
