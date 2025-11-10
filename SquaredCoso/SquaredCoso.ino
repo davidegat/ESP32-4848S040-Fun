@@ -6,7 +6,7 @@
    Mostra a rotazione su pannello ST7701 (480x480) varie pagine di informazioni:
    - Meteo (oggi + prossimi 3 giorni) da wttr.in (JSON j1)
    - Qualità dell’aria (pm2_5, pm10, ozone, nitrogen_dioxide) da Open-Meteo
-   - Orologio (analogico/digitale a seconda della pagina definita)
+   - Orologio (digitale grande)
    - Calendario ICS remoto (solo eventi della giornata locale)
    - Prezzo BTC in CHF da CoinGecko
    - Frase del giorno da ZenQuotes
@@ -14,25 +14,11 @@
    - Countdown multipli (fino a 8)
    - Collegamento (transport.opendata.ch): prossima connessione tra 2 stazioni
 
-   CONNETTIVITÀ
-   ------------
-   - Se non sono presenti credenziali Wi-Fi: avvio AP con captive portal minimale.
-   - Se presenti: modalità STA e WebUI /settings per configurare città/lingua/ICS/
-     intervallo cambio pagina/preset collegamento e countdown.
-
-   NOTE DI PARSING
-   ---------------
-   - Parser JSON “manuale” (String/indexOf) per rimanere leggero (no ArduinoJson).
-   - wttr.in: usa current_condition.temp_C, weatherDesc e mintempC/maxtempC
-   - ICS: riconosce DTSTART all-day (VALUE=DATE) e con orario (TZID/locale).
-   - transport.opendata.ch: prende la prima connessione (limit=1) e ne estrae:
-     orario di partenza locale, linea (products[0] o category+number), durata,
-     numero cambi.
-
-   IMPORTANTI GARANZIE
-   -------------------
-   - Non è stato modificato alcun codice eseguibile: solo commenti riscritti.
-   - Le funzioni, le costanti e la logica restano identiche all’originale.
+   NOVITÀ
+   ------
+   - WebUI: sezione “Pagine visibili” con checkbox per abilitare/disabilitare
+     ogni pagina. La rotazione salta automaticamente le pagine disattivate.
+     Le scelte sono persistenti (NVS) tramite una bitmask.
 
    ========================================================================== */
 
@@ -48,8 +34,6 @@
 #include <math.h>
 
 // =========================== Display / PWM ==================================
-// Impostazioni retroilluminazione (PWM) e bus display RGB con init ST7701.
-// I pin e i timing corrispondono al pannello 480x480 “type9” usato sul 4848S040.
 #define GFX_BL 38
 #define PWM_CHANNEL 0
 #define PWM_FREQ 1000
@@ -65,10 +49,10 @@ Arduino_ESP32RGBPanel* rgbpanel = new Arduino_ESP32RGBPanel(
   11, 12, 13, 14, 0,    // R0..R4
   8, 20, 3, 46, 9, 10,  // G0..G5
   4, 5, 6, 7, 15,       // B0..B4
-  1, 10, 8, 50,         // HSYNC: polarità, front porch, pulse width, back porch
-  1, 10, 8, 20,         // VSYNC: polarità, front porch, pulse width, back porch
-  0,                    // PCLK attivo su fronte negativo
-  12000000,             // Pixel clock (12 MHz)
+  1, 10, 8, 50,         // HSYNC: pol, fp, pw, bp
+  1, 10, 8, 20,         // VSYNC: pol, fp, pw, bp
+  0,                    // PCLK neg edge
+  12000000,             // 12 MHz
   false, 0, 0, 0);
 
 Arduino_RGB_Display* gfx = new Arduino_RGB_Display(
@@ -77,20 +61,19 @@ Arduino_RGB_Display* gfx = new Arduino_RGB_Display(
   bus, GFX_NOT_DEFINED,
   st7701_type9_init_operations, sizeof(st7701_type9_init_operations));
 
-// THEME: Aurora Borealis (palette alta leggibilità su fondo scuro)
-#define COL_BG        0x0008  // Fondo blu-nero
-#define COL_HEADER    0x780F  // Header viola profondo
-#define COL_TEXT      0xFFFF  // Testo principale bianco
-#define COL_SUBTEXT   0xC618  // Secondario grigio chiaro
-#define COL_DIVIDER   0xFFE0  // Divisori giallo brillante
-#define COL_ACCENT1   0xFFFF  // Accento primario (bianco)
-#define COL_ACCENT2   0x07FF  // Accento secondario (ciano elettrico)
-#define COL_GOOD      0x07E0  // Verde (OK)
-#define COL_WARN      0xFFE0  // Giallo (Attenzione)
-#define COL_BAD       0xF800  // Rosso (Critico)
+// THEME
+#define COL_BG        0x0008
+#define COL_HEADER    0x780F
+#define COL_TEXT      0xFFFF
+#define COL_SUBTEXT   0xC618
+#define COL_DIVIDER   0xFFE0
+#define COL_ACCENT1   0xFFFF
+#define COL_ACCENT2   0x07FF
+#define COL_GOOD      0x07E0
+#define COL_WARN      0xFFE0
+#define COL_BAD       0xF800
 
 // =========================== Layout =========================================
-// Geometrie generali dell’interfaccia (header fisso, area contenuti, spaziatura).
 static const int HEADER_H = 50;
 static const int PAGE_X = 16;
 static const int PAGE_Y = HEADER_H + 12;
@@ -106,13 +89,11 @@ static const int CHAR_H = BASE_CHAR_H * TEXT_SCALE;
 static const int ITEMS_LINES_SP = 6;
 
 // =========================== NTP ============================================
-// Sincronizzazione ora locale (IT/CH: UTC+1 con DST).
 static const char* NTP_SERVER = "pool.ntp.org";
-static const long GMT_OFFSET_SEC = 3600;      // UTC+1
-static const int  DAYLIGHT_OFFSET_SEC = 3600; // +1 in DST
+static const long GMT_OFFSET_SEC = 3600;
+static const int  DAYLIGHT_OFFSET_SEC = 3600;
 static bool g_timeSynced = false;
 
-// Attende che l’RTC di sistema sia inizializzato (fino a timeout).
 static bool waitForValidTime(uint32_t timeoutMs = 8000) {
   uint32_t t0 = millis(); time_t now = 0; struct tm info;
   while ((millis() - t0) < timeoutMs) {
@@ -122,13 +103,11 @@ static bool waitForValidTime(uint32_t timeoutMs = 8000) {
   }
   return false;
 }
-// Avvia sync NTP una sola volta.
 static void syncTimeFromNTP() {
   if (g_timeSynced) return;
   configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
   g_timeSynced = waitForValidTime(8000);
 }
-// Ritorna “dd/mm - hh:mm” (vuoto se non ancora sincronizzato).
 static String getFormattedDateTime() {
   if (!g_timeSynced) return "";
   time_t now; struct tm t; time(&now); localtime_r(&now, &t);
@@ -136,7 +115,6 @@ static String getFormattedDateTime() {
   snprintf(buf, sizeof(buf), "%02d/%02d - %02d:%02d", t.tm_mday, t.tm_mon + 1, t.tm_hour, t.tm_min);
   return String(buf);
 }
-// Calcola YYYYMMDD (locale) per filtrare eventi ICS del giorno.
 static void todayYMD(String &ymd) {
   time_t now; struct tm t; time(&now); localtime_r(&now, &t);
   char buf[16]; snprintf(buf, sizeof(buf), "%04d%02d%02d", t.tm_year+1900, t.tm_mon+1, t.tm_mday);
@@ -144,7 +122,6 @@ static void todayYMD(String &ymd) {
 }
 
 // =========================== Wi-Fi / Web ====================================
-// Preferenze (NVS), DNS per captive portal, WebServer per AP/STA.
 Preferences prefs;
 DNSServer dnsServer;
 WebServer web(80);
@@ -153,13 +130,11 @@ String sta_ssid, sta_pass;
 String ap_ssid, ap_pass;
 const byte DNS_PORT = 53;
 
-// Retroilluminazione a piena luminosità.
 static void backlightOn() {
   ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_BITS);
   ledcAttachPin(GFX_BL, PWM_CHANNEL);
   ledcWrite(PWM_CHANNEL, 255);
 }
-// Inizializzazione pannello e pulizia schermo.
 static void panelKickstart() {
   delay(50);
   gfx->begin();
@@ -171,7 +146,6 @@ static void panelKickstart() {
 }
 
 // =========================== Sanificazione testo ============================
-// Normalizza unicode e HTML entities per evitare caratteri non stampabili.
 static String sanitizeText(const String& in) {
   String s = in;
   s.replace("\xC2\xA0"," ");
@@ -188,7 +162,6 @@ static String sanitizeText(const String& in) {
   s.trim(); while (s.indexOf("  ") >= 0) s.replace("  ", " ");
   return s;
 }
-// Riduce una stringa a 15 caratteri con ellissi.
 static String clip15(const String& s) {
   String t = sanitizeText(s);
   if (t.length() <= 15) return t;
@@ -196,42 +169,6 @@ static String clip15(const String& s) {
 }
 
 // =========================== UI: Testo ======================================
-// Titolo orologio digitale grande con data, centrato e scalabile.
-static void drawClockDigitalLarge(const struct tm &t) {
-  drawHeader("Orologio (digitale)");
-  char bufT[16]; snprintf(bufT, sizeof(bufT), "%02d:%02d", t.tm_hour, t.tm_min);
-  char bufS[8];  snprintf(bufS, sizeof(bufS), "%02d", t.tm_sec);
-  char bufD[24]; snprintf(bufD, sizeof(bufD), "%02d/%02d/%04d", t.tm_mday, t.tm_mon+1, t.tm_year+1900);
-
-  int timeScale = 15;
-  gfx->setTextColor(COL_TEXT, COL_BG);
-  gfx->setTextSize(timeScale);
-  int tw = BASE_CHAR_W * timeScale * (int)strlen(bufT);
-  int tx = (480 - tw)/2;
-  int ty = 200;
-  gfx->setCursor(tx, ty);
-  gfx->print(bufT);
-
-  gfx->setTextSize(6);
-  int sw = BASE_CHAR_W * 6 * 2;
-  int sx = (480 - sw)/2;
-  int sy = ty + 120;
-  gfx->setTextColor(COL_ACCENT1, COL_BG);
-  gfx->setCursor(sx, sy);
-  gfx->print(bufS);
-
-  gfx->setTextSize(5);
-  int dw = BASE_CHAR_W * 5 * (int)strlen(bufD);
-  int dx = (480 - dw)/2;
-  int dy = sy + 70;
-  gfx->setTextColor(COL_TEXT, COL_BG);
-  gfx->setCursor(dx, dy);
-  gfx->print(bufD);
-
-  gfx->setTextSize(TEXT_SCALE);
-}
-
-// Testo pseudo-bold (ridisegnato 4 volte per spessore).
 static void drawBoldTextColored(int16_t x, int16_t y, const String& raw, uint16_t fg, uint16_t bg) {
   String s = sanitizeText(raw);
   gfx->setTextSize(TEXT_SCALE);
@@ -243,7 +180,6 @@ static void drawBoldTextColored(int16_t x, int16_t y, const String& raw, uint16_
 }
 static void drawBoldMain(int16_t x, int16_t y, const String& raw) { drawBoldTextColored(x, y, raw, COL_TEXT, COL_BG); }
 
-// Testo centrato con effetto bold e scala variabile.
 static void drawCenteredBold(int16_t y, const String& raw, uint8_t scale, uint16_t fg, uint16_t bg) {
   String s = sanitizeText(raw);
   int w = s.length() * BASE_CHAR_W * scale;
@@ -257,7 +193,6 @@ static void drawCenteredBold(int16_t y, const String& raw, uint8_t scale, uint16
   gfx->setTextSize(TEXT_SCALE);
 }
 
-// Header con titolo a sinistra e timestamp a destra (se NTP ok).
 static void drawHeader(const String& titleRaw) {
   gfx->fillRect(0, 0, 480, HEADER_H, COL_HEADER);
   String title = sanitizeText(titleRaw);
@@ -270,7 +205,6 @@ static void drawHeader(const String& titleRaw) {
 }
 static void drawHLine(int y) { gfx->drawLine(PAGE_X, y, PAGE_X + PAGE_W, y, COL_DIVIDER); }
 
-// Paragrafo con word-wrap in base a larghezza disponibile.
 static void drawParagraph(int16_t x, int16_t y, int16_t w, const String& text, uint8_t scale) {
   int maxChars = w / (BASE_CHAR_W * scale);
   if (maxChars < 8) maxChars = 8;
@@ -296,77 +230,68 @@ static void drawParagraph(int16_t x, int16_t y, int16_t w, const String& text, u
 }
 
 // =========================== Storage impostazioni ============================
-// Stato applicativo persistito (NVS): città/lingua/ICS/coord/intervallo pagine,
-// rotta PT e fino a 8 countdown.
 static String g_city = "Bellinzona";
 static String g_lang = "it";
 static String g_ics  = "";
 static String g_lat  = "";
 static String g_lon  = "";
-static uint32_t PAGE_INTERVAL_MS = 15000;   // default 15 s
+static uint32_t PAGE_INTERVAL_MS = 15000;
 
-// Origine/destinazione per “Collegamento”.
 static String g_from_station = "Bellinzona";
 static String g_to_station   = "Lugano";
 
-// Struttura countdown (nome + ISO locale datetime).
 struct CDEvent { String name; String whenISO; };
 static CDEvent cd[8];
 
-// Carica configurazione dal namespace "app".
-static void loadAppConfig() {
-  prefs.begin("app", true);
-  g_city = prefs.getString("city", g_city);
-  g_lang = prefs.getString("lang", g_lang);
-  g_ics  = prefs.getString("ics",  g_ics);
-  g_lat  = prefs.getString("lat",  g_lat);
-  g_lon  = prefs.getString("lon",  g_lon);
-  PAGE_INTERVAL_MS = prefs.getULong("page_ms", PAGE_INTERVAL_MS);
+// ======= PAGINE / ROTAZIONE =================================================
+enum Page {
+  P_WEATHER=0, P_AIR=1, P_CLOCK=2, P_CAL=3, P_BTC=4, P_QOD=5, P_INFO=6, P_COUNT=7, P_PT=8, PAGES=9
+};
+static int g_page = 0;
 
-  g_from_station = prefs.getString("pt_from", g_from_station);
-  g_to_station   = prefs.getString("pt_to",   g_to_station);
+// Array di visibilità pagina (persistente via bitmask).
+static bool g_show[PAGES] = { true,true,true,true,true,true,true,true,true };
 
-  cd[0].name = prefs.getString("cd1n", ""); cd[0].whenISO = prefs.getString("cd1t", "");
-  cd[1].name = prefs.getString("cd2n", ""); cd[1].whenISO = prefs.getString("cd2t", "");
-  cd[2].name = prefs.getString("cd3n", ""); cd[2].whenISO = prefs.getString("cd3t", "");
-  cd[3].name = prefs.getString("cd4n", ""); cd[3].whenISO = prefs.getString("cd4t", "");
-  cd[4].name = prefs.getString("cd5n", ""); cd[4].whenISO = prefs.getString("cd5t", "");
-  cd[5].name = prefs.getString("cd6n", ""); cd[5].whenISO = prefs.getString("cd6t", "");
-  cd[6].name = prefs.getString("cd7n", ""); cd[6].whenISO = prefs.getString("cd7t", "");
-  cd[7].name = prefs.getString("cd8n", ""); cd[7].whenISO = prefs.getString("cd8t", "");
-
-  prefs.end();
-  uint32_t s = PAGE_INTERVAL_MS / 1000;
-  if (s < 5) PAGE_INTERVAL_MS = 5000; else if (s > 600) PAGE_INTERVAL_MS = 600000;
+// Helpers mask <-> array
+static uint16_t pagesMaskFromArray() {
+  uint16_t m = 0;
+  for (int i=0;i<PAGES;i++) if (g_show[i]) m |= (1u<<i);
+  return m;
+}
+static void pagesArrayFromMask(uint16_t m) {
+  for (int i=0;i<PAGES;i++) g_show[i] = (m & (1u<<i)) != 0;
+  // Safety: se tutte false, abilita almeno l'orologio
+  bool any=false; for (int i=0;i<PAGES;i++) if (g_show[i]) { any=true; break; }
+  if (!any) { for (int i=0;i<PAGES;i++) g_show[i]=false; g_show[P_CLOCK]=true; }
 }
 
-// Salva configurazione nel namespace "app".
-static void saveAppConfig() {
-  prefs.begin("app", false);
-  prefs.putString("city", g_city);
-  prefs.putString("lang", g_lang);
-  prefs.putString("ics",  g_ics);
-  prefs.putString("lat",  g_lat);
-  prefs.putString("lon",  g_lon);
-  prefs.putULong("page_ms", PAGE_INTERVAL_MS);
-
-  prefs.putString("pt_from", g_from_station);
-  prefs.putString("pt_to",   g_to_station);
-
-  prefs.putString("cd1n", cd[0].name); prefs.putString("cd1t", cd[0].whenISO);
-  prefs.putString("cd2n", cd[1].name); prefs.putString("cd2t", cd[1].whenISO);
-  prefs.putString("cd3n", cd[2].name); prefs.putString("cd3t", cd[2].whenISO);
-  prefs.putString("cd4n", cd[3].name); prefs.putString("cd4t", cd[3].whenISO);
-  prefs.putString("cd5n", cd[4].name); prefs.putString("cd5t", cd[4].whenISO);
-  prefs.putString("cd6n", cd[5].name); prefs.putString("cd6t", cd[5].whenISO);
-  prefs.putString("cd7n", cd[6].name); prefs.putString("cd7t", cd[6].whenISO);
-  prefs.putString("cd8n", cd[7].name); prefs.putString("cd8t", cd[7].whenISO);
-
-  prefs.end();
+// Trova la prima pagina abilitata; -1 se nessuna.
+static int firstEnabledPage() {
+  for (int i=0;i<PAGES;i++) if (g_show[i]) return i;
+  return -1;
+}
+// Avanza g_page alla prossima pagina abilitata (wrap); ritorna false se nessuna.
+static bool advanceToNextEnabled() {
+  if (firstEnabledPage() < 0) return false;
+  for (int k=0;k<PAGES;k++) {
+    g_page = (g_page + 1) % PAGES;
+    if (g_show[g_page]) return true;
+  }
+  return false;
+}
+// Se la pagina corrente è disabilitata, spostati sulla prima abilitata.
+static void ensureCurrentPageEnabled() {
+  if (g_show[g_page]) return;
+  int f = firstEnabledPage();
+  if (f >= 0) g_page = f;
+  else { // impossibile: fallback
+    g_page = P_CLOCK;
+    for (int i=0;i<PAGES;i++) g_show[i]=false;
+    g_show[P_CLOCK]=true;
+  }
 }
 
 // =========================== HTTP helpers ===================================
-// Piccole utility per richieste GET e ricerche case-insensitive.
 static inline bool isHttpOk(int code) { return code >= 200 && code < 300; }
 static bool httpGET(const String& url, String& out, uint32_t timeout=8000) {
   HTTPClient http; http.setTimeout(timeout);
@@ -380,14 +305,12 @@ static int indexOfCI(const String& s, const String& pat, int from=0) {
 }
 
 // =========================== Meteo (wttr.in) ================================
-// Variabili di stato meteo corrente e 3 giorni successivi.
 static float w_now_tempC = NAN;
 static String w_now_desc = "";
 static float w_minC[3] = {NAN,NAN,NAN};
 static float w_maxC[3] = {NAN,NAN,NAN};
 static String w_desc[3] = {"","",""};
 
-// Estrazione value string da “key”: “value”.
 static bool jsonFindStringKV(const String& body, const String& key, int from, String& outVal) {
   String k = String("\"") + key + String("\"");
   int p = body.indexOf(k, from); if (p<0) return false;
@@ -397,8 +320,6 @@ static bool jsonFindStringKV(const String& body, const String& key, int from, St
   outVal = body.substring(q1+1, q2);
   return true;
 }
-
-// Scarica e interpreta wttr.in/j1 per temperatura/descrizioni e min/max.
 static bool fetchWeather() {
   String cityURL = g_city; cityURL.trim(); cityURL.replace(" ", "%20");
   String url = String("https://wttr.in/") + cityURL + "?format=j1&lang=" + g_lang;
@@ -465,10 +386,8 @@ static bool fetchWeather() {
 }
 
 // =========================== Qualità Aria (Open-Meteo) ======================
-// Stato qualità aria (primo valore orario disponibile).
 static float aq_pm25 = NAN, aq_pm10 = NAN, aq_o3 = NAN, aq_no2 = NAN;
 
-// Estrae blocco oggetto “{...}” per una chiave.
 static bool extractObjectBlock(const String& body, const String& key, String& out) {
   int k = indexOfCI(body, String("\"") + key + String("\""));
   if (k < 0) return false;
@@ -482,8 +401,6 @@ static bool extractObjectBlock(const String& body, const String& key, String& ou
   }
   return false;
 }
-
-// Legge il primo numero di un array numerico (es: "pm2_5":[12.3, ...]).
 static bool parseFirstNumberList(const String& obj, const String& key, float *out, int /*want*/) {
   int p = indexOfCI(obj, String("\"") + key + String("\""));
   if (p < 0) return false;
@@ -504,8 +421,6 @@ static bool parseFirstNumberList(const String& obj, const String& key, float *ou
   out[0] = num.toFloat();
   return true;
 }
-
-// Se mancano coordinate, le ricava via geocoding Open-Meteo (count=1).
 static bool geocodeIfNeeded() {
   if (g_lat.length() && g_lon.length()) return true;
   String url = "https://geocoding-api.open-meteo.com/v1/search?count=1&format=json&name=" + g_city + "&language=" + g_lang;
@@ -522,8 +437,6 @@ static bool geocodeIfNeeded() {
   g_lat = lat; g_lon = lon; saveAppConfig();
   return true;
 }
-
-// Scarica qualità aria e preleva il primo valore orario di ciascun indicatore.
 static bool fetchAir() {
   if (!geocodeIfNeeded()) return false;
   String url = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + g_lat +
@@ -542,8 +455,6 @@ static bool fetchAir() {
 
   return true;
 }
-
-// Mappa grezza di qualità in 5 categorie (semplificato stile UE) e stringa risultato.
 static int catFrom(float v, float a, float b, float c, float d) {
   if (isnan(v)) return -1;
   if (v <= a) return 0; if (v <= b) return 1; if (v <= c) return 2; if (v <= d) return 3; return 4;
@@ -569,31 +480,24 @@ static String airVerdict() {
 }
 
 // ====================== Calendario ICS (solo OGGI) ==========================
-// Slot per massimo 3 eventi odierni con ordinamento per orario.
-struct CalItem { 
-  String when; 
-  String summary; 
-  String where; 
-  time_t ts; 
-  bool allDay; 
-};
+struct CalItem { String when; String summary; String where; time_t ts; bool allDay; };
 CalItem cal[3];
 
 static String trimField(const String& s) { String t=s; t.trim(); return t; }
-static void resetCal() { 
-  for (int i=0;i<3;i++){ 
-    cal[i].when=""; cal[i].summary=""; cal[i].where=""; 
-    cal[i].ts=0; cal[i].allDay=false; 
-  } 
+static void resetCal() {
+  for (int i=0;i<3;i++){
+    cal[i].when=""; cal[i].summary=""; cal[i].where="";
+    cal[i].ts=0; cal[i].allDay=false;
+  }
 }
-static String extractAfterColon(const String& src, int pos){ 
-  int c=src.indexOf(':',pos); if(c<0) return ""; 
-  int e=src.indexOf('\n', c+1); if(e<0) e=src.length(); 
-  return trimField(src.substring(c+1,e)); 
+static String extractAfterColon(const String& src, int pos){
+  int c=src.indexOf(':',pos); if(c<0) return "";
+  int e=src.indexOf('\n', c+1); if(e<0) e=src.length();
+  return trimField(src.substring(c+1,e));
 }
-static bool isTodayStamp(const String& dtstampYmd, const String& todayYmd){ 
-  if (dtstampYmd.length() < 8) return false; 
-  return dtstampYmd.substring(0,8) == todayYmd; 
+static bool isTodayStamp(const String& dtstampYmd, const String& todayYmd){
+  if (dtstampYmd.length() < 8) return false;
+  return dtstampYmd.substring(0,8) == todayYmd;
 }
 static void humanTimeFromStamp(const String& stamp, String &out){
   if (stamp.length()>=15 && stamp.charAt(8)=='T') {
@@ -602,25 +506,23 @@ static void humanTimeFromStamp(const String& stamp, String &out){
     out = hh + ":" + mm;
   } else out = "tutto il giorno";
 }
-
-// Scarica ICS remoto (se configurato) e popola al massimo 3 eventi di oggi.
 static bool fetchICS() {
   resetCal();
   if (!g_ics.length()) return true;
 
-  String body; 
+  String body;
   if (!httpGET(g_ics, body, 15000)) return false;
 
   String today; todayYMD(today);
 
-  int idx=0; 
+  int idx=0;
   int p=0;
   while (idx<3) {
     int b = body.indexOf("BEGIN:VEVENT", p); if (b<0) break;
     int e = body.indexOf("END:VEVENT", b); if (e<0) break;
     String blk = body.substring(b, e);
 
-    int ds = indexOfCI(blk, "DTSTART"); 
+    int ds = indexOfCI(blk, "DTSTART");
     String rawStart="";
     if (ds>=0) rawStart = extractAfterColon(blk, ds);
     if (!rawStart.length()) { p = e + 10; continue; }
@@ -663,11 +565,9 @@ static bool fetchICS() {
 }
 
 // =========================== Bitcoin CHF ====================================
-// Scarica prezzo BTC in CHF e memorizza timestamp ultimo aggiornamento.
 static double btc_chf = NAN;
 static uint32_t btc_last_ok_ms = 0;
 
-// Estrae numeri da “key”: number (anche in liste/oggetti semplici).
 static bool jsonFindNumberKV(const String& body, const String& key, int from, double &outVal) {
   String k = String("\"") + key + String("\"");
   int p = body.indexOf(k, from); if (p < 0) return false;
@@ -686,7 +586,6 @@ static bool jsonFindNumberKV(const String& body, const String& key, int from, do
   outVal = num.toDouble();
   return true;
 }
-// Formattazione CHF con apostrofo come separatore migliaia.
 static String formatCHF(double v) {
   if (isnan(v)) return String("--.--");
   long long intPart = (long long)llround(floor(v));
@@ -703,7 +602,6 @@ static String formatCHF(double v) {
   char buf[16]; snprintf(buf, sizeof(buf), "%02d", cents);
   return out + String(".") + String(buf);
 }
-// Richiesta CoinGecko per BTC/CHF e memorizzazione ultimo ok.
 static bool fetchBTC() {
   String url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=chf";
   String body; if (!httpGET(url, body, 10000)) return false;
@@ -713,7 +611,6 @@ static bool fetchBTC() {
 }
 
 // =========================== Frase del giorno ================================
-// Scarica “quote” (q) e autore (a) da ZenQuotes e tronca a 280 caratteri.
 static String qod_text = "";
 static String qod_author = "";
 
@@ -727,8 +624,6 @@ static bool fetchQOD() {
   if (qod_text.length() > 280) qod_text = qod_text.substring(0, 277) + "...";
   return true;
 }
-
-// Pagina visualizzazione frase + autore (con scaling dinamico).
 static void pageQOD() {
   drawHeader("Frase del giorno");
   int y = PAGE_Y;
@@ -762,14 +657,12 @@ static void pageQOD() {
   gfx->setTextSize(TEXT_SCALE);
 }
 
-// =========================== Trasporti pubblici (singolo collegamento) ======
-// Stato dati “Collegamento”: orario partenza, linea, durata compatta, cambi.
+// =========================== Trasporti pubblici ==============================
 static String pt_dep_time = "";
 static String pt_line     = "";
 static String pt_dur_comp = "";
 static int    pt_transfers = -1;
 
-// Estrae prima stringa da un array JSON (es. products[0]).
 static bool jsonFindArrayFirstString(const String& body, const String& key, int from, String& outVal) {
   String k = String("\"") + key + String("\"");
   int p = body.indexOf(k, from); if (p<0) return false;
@@ -779,8 +672,6 @@ static bool jsonFindArrayFirstString(const String& body, const String& key, int 
   outVal = body.substring(q1+1, q2);
   return outVal.length() > 0;
 }
-
-// Legge intero semplice (es. "transfers": 1).
 static bool jsonFindIntKV(const String& body, const String& key, int from, int &outVal) {
   String k = String("\"") + key + String("\"");
   int p = body.indexOf(k, from); if (p<0) return false;
@@ -793,8 +684,6 @@ static bool jsonFindIntKV(const String& body, const String& key, int from, int &
   outVal = body.substring(s, e).toInt();
   return true;
 }
-
-// Converte “2025-11-10T12:34:56+0100” in “HH:MM”.
 static String isoToHM(const String& iso) {
   int t = iso.indexOf('T');
   if (t > 0 && iso.length() >= t+5+1) {
@@ -804,8 +693,6 @@ static String isoToHM(const String& iso) {
   }
   return String("--:--");
 }
-
-// Riduce “hh:mm:ss” o “XdHH:MM:SS” in “Xm” o “HhMm”.
 static String compactDuration(const String& dur) {
   int d_sep = dur.indexOf('d');
   int days = 0;
@@ -824,8 +711,6 @@ static String compactDuration(const String& dur) {
   snprintf(buf, sizeof(buf), "%dh%02dm", h, m);
   return String(buf);
 }
-
-// Fallback per linea: se manca products[0], prende da prima journey category/number.
 static bool extractFirstJourneyLine(const String& connObj, String& outLine) {
   int sec = indexOfCI(connObj, "\"sections\"");
   if (sec < 0) return false;
@@ -845,13 +730,10 @@ static bool extractFirstJourneyLine(const String& connObj, String& outLine) {
   outLine = sanitizeText(line);
   return true;
 }
-
-// Scarica la prima connessione utile tra g_from_station e g_to_station.
 static bool fetchPT() {
   pt_dep_time = ""; pt_line = ""; pt_dur_comp = ""; pt_transfers = -1;
   if (!g_from_station.length() || !g_to_station.length()) return false;
 
-  // URL-encode minimale (caratteri non “safe” -> %XX)
   auto enc = [](String s) {
     String out; out.reserve(s.length() * 3);
     for (int i = 0; i < (int)s.length(); ++i) {
@@ -867,7 +749,7 @@ static bool fetchPT() {
   String url = "https://transport.opendata.ch/v1/connections?limit=1&from=" + enc(g_from_station) +
                "&to=" + enc(g_to_station);
 
-  String body; 
+  String body;
   if (!httpGET(url, body, 12000)) return false;
 
   int cpos = indexOfCI(body, "\"connections\"");
@@ -905,30 +787,25 @@ static bool fetchPT() {
 
   return (pt_dep_time.length() + pt_dur_comp.length() + pt_line.length()) > 0;
 }
-
-// Pagina “Prossima partenza”: route centrata, poi dettagli essenziali.
 static void pagePT() {
   drawHeader("Prossima partenza");
 
   int y = PAGE_Y;
 
-  // Mostra la rotta (origine/destinazione)
   String route = sanitizeText(g_from_station) + "/" + sanitizeText(g_to_station);
   uint8_t routeScale = 3;
   if (route.length() > 18) routeScale = 2;
   drawCenteredBold(y, route, routeScale, COL_TEXT, COL_BG);
   y += (BASE_CHAR_H * routeScale) + 10;
 
-  drawHLine(y); 
+  drawHLine(y);
   y += 12;
 
-  // “Partenza HH:MM” - ingrandito
   String depLine = String("Partenza ") + (pt_dep_time.length() ? pt_dep_time : "--:--");
-  uint8_t depScale = 3;  // aumentato da 1x (default) a 3x
+  uint8_t depScale = 3;
   drawCenteredBold(y, depLine, depScale, COL_TEXT, COL_BG);
   y += (BASE_CHAR_H * depScale) + 10;
 
-  // Linea (es. IC 21, RE 8, ecc.)
   String lineLbl = pt_line.length() ? pt_line : String("--");
   uint8_t lineScale = 6;
   if (lineLbl.length() > 10) lineScale = 5;
@@ -940,9 +817,7 @@ static void pagePT() {
   y += 12;
 }
 
-
 // =========================== Pagine display =================================
-// BTC: valore centrale grande + info di fonte e “età” dato.
 static void pageBTC() {
   drawHeader("Valore Bitcoin");
   int y = PAGE_Y;
@@ -970,7 +845,6 @@ static void pageBTC() {
   gfx->setTextSize(TEXT_SCALE);
 }
 
-// Meteo: evidenza stato attuale, poi tre righe Giorno +i con range e descrizione.
 static void pageWeather() {
   drawHeader(String("Meteo per ") + sanitizeText(g_city));
   int y = PAGE_Y;
@@ -996,8 +870,6 @@ static void pageWeather() {
     y += CHAR_H*2 + 4;
   }
 }
-
-// Qualità dell’aria: valori grezzi e verdetto sintetico.
 static void pageAir() {
   drawHeader(String("Aria a ") + sanitizeText(g_city));
   int y = PAGE_Y;
@@ -1028,8 +900,6 @@ static void pageAir() {
   gfx->setCursor(PAGE_X, y + CHAR_H);
   gfx->print(sanitizeText(verdict));
 }
-
-// Orologio “greeting” in base alla fascia oraria + HH:MM molto grande + data.
 static void pageClock() {
   time_t now; struct tm t; time(&now); localtime_r(&now, &t);
   String greeting;
@@ -1090,8 +960,6 @@ static void pageClock() {
   gfx->print(bufD);
   gfx->setTextSize(TEXT_SCALE);
 }
-
-// Calendario: al più 3 eventi di oggi, ordinati per prossimità temporale.
 static void pageCalendar() {
   drawHeader("Calendario (oggi)");
   int y = PAGE_Y;
@@ -1145,9 +1013,6 @@ static void pageCalendar() {
     if (y > 460) break;
   }
 }
-
-// =========================== Info dispositivo ===============================
-// Utility di formattazione per dimensioni, MAC, data breve, uptime leggibile.
 static String formatBytes(size_t b) {
   if (b >= (1<<20)) return String(b / (1<<20)) + " MB";
   if (b >= (1<<10)) return String(b / (1<<10)) + " KB";
@@ -1174,7 +1039,6 @@ static String formatUptime() {
   snprintf(buf, sizeof(buf), "%ud %02u:%02u:%02lu", d, h, m, sec);
   return String(buf);
 }
-// Pagina con stato rete, risorse e frequenza CPU.
 static void pageInfo() {
   drawHeader("Info dispositivo");
   int y = PAGE_Y;
@@ -1206,7 +1070,6 @@ static void pageInfo() {
 }
 
 // =========================== Countdown ======================================
-// Parsing ISO “YYYY-MM-DDTHH:MM” in time_t e formattazione “tempo rimanente”.
 static bool parseISOToTimeT(const String& iso, time_t &out) {
   if (!iso.length() || iso.length() < 16) return false;
   struct tm t = {};
@@ -1231,7 +1094,6 @@ static String formatDelta(time_t target) {
   else     snprintf(buf, sizeof(buf), "%02ldh %02ldm", h, m);
   return String(buf);
 }
-// Mostra countdown futuri (ordinati) con data breve e tempo residuo.
 static void pageCountdowns() {
   drawHeader("Countdown");
   int y = PAGE_Y;
@@ -1272,49 +1134,39 @@ static void pageCountdowns() {
   if (!any) drawBoldMain(PAGE_X, y + CHAR_H, (g_lang == "it" ? "Nessun countdown configurato" : "No countdowns"));
 }
 
-// =========================== Ciclo pagine ===================================
-// Elenco delle pagine ciclate automaticamente (ordine fisso).
-enum Page { 
-  P_WEATHER=0, P_AIR=1, P_CLOCK=2, P_CAL=3, P_BTC=4, P_QOD=5, P_INFO=6, P_COUNT=7, P_PT=8, PAGES=9 
-};
-static int g_page = 0;
-
 // =========================== Dati / Refresh =================================
-// Timers per data refresh (10 min), cambio pagina e refresh iniziale/forzato.
 static uint32_t lastRefresh = 0;
-static const uint32_t REFRESH_MS = 10UL*60UL*1000UL; // dati ogni 10 min
+static const uint32_t REFRESH_MS = 10UL*60UL*1000UL;
 static uint32_t lastPageSwitch = 0;
 volatile bool g_dataRefreshPending = false;
 
-// Disegna la pagina corrente (pulisce lo schermo prima).
 static void drawCurrentPage() {
+  ensureCurrentPageEnabled();
   gfx->fillScreen(COL_BG);
   switch (g_page) {
-    case P_WEATHER: pageWeather(); break;
-    case P_AIR:     pageAir();     break;
-    case P_CLOCK:   pageClock();   break;
-    case P_CAL:     pageCalendar();break;
-    case P_BTC:     pageBTC();     break;
-    case P_QOD:     pageQOD();     break;
-    case P_INFO:    pageInfo();    break;
-    case P_COUNT:   pageCountdowns(); break;
-    case P_PT:      pagePT();      break;
+    case P_WEATHER: if (g_show[P_WEATHER]) pageWeather(); else { /*no-op*/ } break;
+    case P_AIR:     if (g_show[P_AIR])     pageAir();     break;
+    case P_CLOCK:   if (g_show[P_CLOCK])   pageClock();   break;
+    case P_CAL:     if (g_show[P_CAL])     pageCalendar();break;
+    case P_BTC:     if (g_show[P_BTC])     pageBTC();     break;
+    case P_QOD:     if (g_show[P_QOD])     pageQOD();     break;
+    case P_INFO:    if (g_show[P_INFO])    pageInfo();    break;
+    case P_COUNT:   if (g_show[P_COUNT])   pageCountdowns(); break;
+    case P_PT:      if (g_show[P_PT])      pagePT();      break;
   }
 }
-// Scarica tutte le fonti (best-effort) e ridisegna la pagina corrente.
 static void refreshAll() {
-  fetchWeather();
-  fetchAir();
-  fetchICS();
-  fetchBTC();
-  fetchQOD();
-  fetchPT();           // collegamento (trasporto pubblico)
+  if (g_show[P_WEATHER]) fetchWeather();
+  if (g_show[P_AIR])     fetchAir();
+  if (g_show[P_CAL])     fetchICS();
+  if (g_show[P_BTC])     fetchBTC();
+  if (g_show[P_QOD])     fetchQOD();
+  if (g_show[P_PT])      fetchPT();
   drawCurrentPage();
   lastPageSwitch = millis();
 }
 
 // =========================== Captive + WebUI ================================
-// HTML AP: form minimale per salvare SSID/PWD e riavviare in STA.
 static String htmlAP() {
   String ip = WiFi.softAPIP().toString();
   String page =
@@ -1335,7 +1187,12 @@ static String htmlAP() {
   return page;
 }
 
-// HTML /settings in STA: card con città/lingua/ICS/cambio pagina, rotta PT e 8 countdown.
+// ------- HTML SETTINGS (aggiunta sezione Pagine visibili) -------------------
+static String checkbox(const char* name, bool checked, const char* label) {
+  return String("<label style='display:flex;gap:8px;align-items:center'><input type='checkbox' name='") + name +
+         "' value='1' " + (checked?"checked":"") + "/><span>"+label+"</span></label>";
+}
+
 static String htmlSettings(bool saved=false, const String& msg="") {
   String notice = saved ? "<div class='ok'>Impostazioni salvate. Aggiornamento in corso…</div>" :
                  (msg.length()? ("<div class='warn'>" + msg + "</div>") : "");
@@ -1360,6 +1217,7 @@ static String htmlSettings(bool saved=false, const String& msg="") {
     ".ghost{background:transparent;color:#ddd;border:1px solid #2b2b2b}"
     ".ok{margin:12px 0;padding:12px 14px;border-left:4px solid #0dad4a;background:#0f2218;color:#c7ffd9;border-radius:8px}"
     ".warn{margin:12px 0;padding:12px 14px;border-left:4px solid #ad6b0d;background:#221a0f;color:#ffe2c7;border-radius:8px}"
+    ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}"
     "</style></head><body>"
     "<header><h1>Impostazioni</h1></header><main>"
     + notice +
@@ -1382,6 +1240,22 @@ static String htmlSettings(bool saved=false, const String& msg="") {
     "<div><label>Partenza</label><input name='pt_from' value='" + sanitizeText(g_from_station) + "' placeholder='Bellinzona'/></div>"
     "<div><label>Arrivo</label><input name='pt_to' value='" + sanitizeText(g_to_station) + "' placeholder='Lugano'/></div>"
     "</div>"
+    "</div>"
+    "<br>"
+    "<div class='card'>"
+    "<h3>Pagine visibili</h3>"
+    "<div class='grid'>"
+      + checkbox("p_WEATHER", g_show[P_WEATHER], "Meteo (wttr.in)") +
+      checkbox("p_AIR",      g_show[P_AIR],      "Qualità aria (Open-Meteo)") +
+      checkbox("p_CLOCK",    g_show[P_CLOCK],    "Orologio") +
+      checkbox("p_CAL",      g_show[P_CAL],      "Calendario ICS (oggi)") +
+      checkbox("p_BTC",      g_show[P_BTC],      "Bitcoin in CHF") +
+      checkbox("p_QOD",      g_show[P_QOD],      "Frase del giorno") +
+      checkbox("p_INFO",     g_show[P_INFO],     "Info dispositivo") +
+      checkbox("p_COUNT",    g_show[P_COUNT],    "Countdown") +
+      checkbox("p_PT",       g_show[P_PT],       "Prossima partenza") +
+    "</div>"
+    "<p style='opacity:.8;margin-top:8px'>Se le deselezioni tutte, l'Orologio resterà comunque attivo.</p>"
     "</div>"
     "<br>"
     "<div class='card'>"
@@ -1426,7 +1300,7 @@ static String htmlSettings(bool saved=false, const String& msg="") {
   return page;
 }
 
-// Handler AP: root, salvataggio credenziali e reboot.
+// -------------------- Handlers AP/STA ---------------------------------------
 static void handleRootAP() { web.send(200, "text/html; charset=utf-8", htmlAP()); }
 static void handleSave() {
   if (web.hasArg("ssid") && web.hasArg("pass")) {
@@ -1443,9 +1317,11 @@ static void handleSave() {
 }
 static void handleReboot(){ web.send(200, "text/plain; charset=utf-8", "OK"); delay(100); ESP.restart(); }
 
-// Handler STA: home e /settings.
 static String htmlHome() {
   uint32_t s = PAGE_INTERVAL_MS / 1000;
+  String enabledList = "";
+  const char* names[PAGES] = {"Meteo","Aria","Orologio","Calendario","BTC","Frase","Info","Countdown","Partenza"};
+  for (int i=0;i<PAGES;i++) { if (g_show[i]) { if (enabledList.length()) enabledList += ", "; enabledList += names[i]; } }
   String page = "<!doctype html><html><head><meta charset='utf-8'/>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'/>"
     "<title>Gat Multi Ticker</title>"
@@ -1453,6 +1329,7 @@ static String htmlHome() {
     "</head><body><h2>Gat Multi Ticker</h2>";
   page += String("<p><b>Citta:</b> ") + sanitizeText(g_city) + String("<br><b>Lingua:</b> ") + sanitizeText(g_lang) +
           String("<br><b>Intervallo cambio pagina:</b> ") + String(s) + String(" s</p>");
+  page += String("<p><b>Pagine attive:</b> ") + enabledList + "</p>";
   page += String("<p><b>Collegamento:</b> ") + sanitizeText(g_from_station) + " → " + sanitizeText(g_to_station) + "</p>";
   page += "<p><a href='/settings'>Impostazioni</a></p></body></html>";
   return page;
@@ -1487,19 +1364,50 @@ static void handleSettings() {
     cd[6].name = sanitizeText(web.arg("cd7n")); cd[6].whenISO = sanitizeText(web.arg("cd7t"));
     cd[7].name = sanitizeText(web.arg("cd8n")); cd[7].whenISO = sanitizeText(web.arg("cd8t"));
 
+    // ---- Leggi checkbox pagine (presenti -> true, assenti -> false) ----
+    g_show[P_WEATHER] = web.hasArg("p_WEATHER");
+    g_show[P_AIR]     = web.hasArg("p_AIR");
+    g_show[P_CLOCK]   = web.hasArg("p_CLOCK");
+    g_show[P_CAL]     = web.hasArg("p_CAL");
+    g_show[P_BTC]     = web.hasArg("p_BTC");
+    g_show[P_QOD]     = web.hasArg("p_QOD");
+    g_show[P_INFO]    = web.hasArg("p_INFO");
+    g_show[P_COUNT]   = web.hasArg("p_COUNT");
+    g_show[P_PT]      = web.hasArg("p_PT");
+
+    // Safety: se tutte false, abilita almeno l'orologio
+    bool any=false; for (int i=0;i<PAGES;i++) if (g_show[i]) { any=true; break; }
+    if (!any) g_show[P_CLOCK] = true;
+
+    // Reset coords se cambia città
     prefs.begin("app", true);
     String prevCity = prefs.getString("city", g_city);
     prefs.end();
     if (prevCity != g_city) { g_lat = ""; g_lon = ""; }
 
-    saveAppConfig();
+    // Persisti tutto incluso mask pagine
+    prefs.begin("app", false);
+    prefs.putString("city", g_city);
+    prefs.putString("lang", g_lang);
+    prefs.putString("ics",  g_ics);
+    prefs.putString("lat",  g_lat);
+    prefs.putString("lon",  g_lon);
+    prefs.putULong("page_ms", PAGE_INTERVAL_MS);
+    prefs.putString("pt_from", g_from_station);
+    prefs.putString("pt_to",   g_to_station);
+    for (int i=0;i<8;i++){ char kn[6], kt[6]; snprintf(kn,sizeof(kn),"cd%dn",i+1); snprintf(kt,sizeof(kt),"cd%dt",i+1);
+      prefs.putString(kn, cd[i].name); prefs.putString(kt, cd[i].whenISO); }
+    uint16_t mask = pagesMaskFromArray();
+    prefs.putUShort("pages_mask", mask);
+    prefs.end();
+
+    ensureCurrentPageEnabled();
     g_dataRefreshPending = true;
     saved = true;
   }
   web.send(200, "text/html; charset=utf-8", htmlSettings(saved));
 }
 
-// Avvio DNS e server in AP (captive) e in STA (WebUI).
 static void startDNSCaptive(){ dnsServer.start(DNS_PORT, "*", WiFi.softAPIP()); }
 static void startAPPortal(){
   web.on("/", HTTP_GET, handleRootAP);
@@ -1516,7 +1424,6 @@ static void startSTAWeb(){
 }
 
 // =========================== Wi-Fi ==========================================
-// Schermata guida per AP con SSID/pwd e istruzioni brevi.
 static void drawAPScreenOnce(const String& ssid, const String& pass) {
   gfx->fillScreen(COL_BG);
   drawBoldTextColored(16, 36, "Connettiti all'AP:", COL_TEXT, COL_BG);
@@ -1527,7 +1434,6 @@ static void drawAPScreenOnce(const String& ssid, const String& pass) {
   gfx->setCursor(16, 126); gfx->print("Se non compare, apri l'IP dell'AP.");
   gfx->setTextSize(TEXT_SCALE);
 }
-// Crea SSID “PANEL-XXYY”, avvia AP senza sleep, DNS captive + server.
 static void startAPWithPortal() {
   uint8_t mac[6]; WiFi.macAddress(mac);
   char ssidbuf[32]; snprintf(ssidbuf, sizeof(ssidbuf), "PANEL-%02X%02X", mac[4], mac[5]);
@@ -1536,7 +1442,6 @@ static void startAPWithPortal() {
   WiFi.softAP(ap_ssid.c_str(), ap_pass.c_str()); delay(100);
   startDNSCaptive(); startAPPortal(); drawAPScreenOnce(ap_ssid, ap_pass);
 }
-// Tenta connessione STA con credenziali in NVS (timeout configurabile).
 static bool tryConnectSTA(uint32_t timeoutMs = 8000) {
   prefs.begin("wifi", true);
   sta_ssid = prefs.getString("ssid", "");
@@ -1550,9 +1455,59 @@ static bool tryConnectSTA(uint32_t timeoutMs = 8000) {
   return WiFi.status() == WL_CONNECTED;
 }
 
+// =========================== Load/Save Config ================================
+static void loadAppConfig() {
+  prefs.begin("app", true);
+  g_city = prefs.getString("city", g_city);
+  g_lang = prefs.getString("lang", g_lang);
+  g_ics  = prefs.getString("ics",  g_ics);
+  g_lat  = prefs.getString("lat",  g_lat);
+  g_lon  = prefs.getString("lon",  g_lon);
+  PAGE_INTERVAL_MS = prefs.getULong("page_ms", PAGE_INTERVAL_MS);
+
+  g_from_station = prefs.getString("pt_from", g_from_station);
+  g_to_station   = prefs.getString("pt_to",   g_to_station);
+
+  cd[0].name = prefs.getString("cd1n", ""); cd[0].whenISO = prefs.getString("cd1t", "");
+  cd[1].name = prefs.getString("cd2n", ""); cd[1].whenISO = prefs.getString("cd2t", "");
+  cd[2].name = prefs.getString("cd3n", ""); cd[2].whenISO = prefs.getString("cd3t", "");
+  cd[3].name = prefs.getString("cd4n", ""); cd[3].whenISO = prefs.getString("cd4t", "");
+  cd[4].name = prefs.getString("cd5n", ""); cd[4].whenISO = prefs.getString("cd5t", "");
+  cd[5].name = prefs.getString("cd6n", ""); cd[5].whenISO = prefs.getString("cd6t", "");
+  cd[6].name = prefs.getString("cd7n", ""); cd[6].whenISO = prefs.getString("cd7t", "");
+  cd[7].name = prefs.getString("cd8n", ""); cd[7].whenISO = prefs.getString("cd8t", "");
+
+  uint16_t mask = prefs.getUShort("pages_mask", 0x01FF /* 9 bit a 1: tutte attive */);
+  prefs.end();
+
+  // Clamp intervallo
+  uint32_t s = PAGE_INTERVAL_MS / 1000;
+  if (s < 5) PAGE_INTERVAL_MS = 5000; else if (s > 600) PAGE_INTERVAL_MS = 600000;
+
+  // Applica mask pagine
+  pagesArrayFromMask(mask);
+}
+static void saveAppConfig() {
+  prefs.begin("app", false);
+  prefs.putString("city", g_city);
+  prefs.putString("lang", g_lang);
+  prefs.putString("ics",  g_ics);
+  prefs.putString("lat",  g_lat);
+  prefs.putString("lon",  g_lon);
+  prefs.putULong("page_ms", PAGE_INTERVAL_MS);
+
+  prefs.putString("pt_from", g_from_station);
+  prefs.putString("pt_to",   g_to_station);
+
+  for (int i=0;i<8;i++){ char kn[6], kt[6]; snprintf(kn,sizeof(kn),"cd%dn",i+1); snprintf(kt,sizeof(kt),"cd%dt",i+1);
+    prefs.putString(kn, cd[i].name); prefs.putString(kt, cd[i].whenISO); }
+
+  uint16_t mask = pagesMaskFromArray();
+  prefs.putUShort("pages_mask", mask);
+  prefs.end();
+}
+
 // =========================== Setup / Loop ===================================
-// Setup: display, config, Wi-Fi. In STA: WebUI + sync NTP + refresh iniziale.
-// In AP: captive portal con form per SSID/pwd.
 void setup() {
   Serial.begin(115200);
   backlightOn(); panelKickstart();
@@ -1570,7 +1525,6 @@ void setup() {
   }
 }
 
-// Loop: gestisce Web/DNS, retry Wi-Fi, refresh dati/pagine in base ai timer.
 void loop() {
   if (WiFi.getMode() == WIFI_AP) {
     dnsServer.processNextRequest(); web.handleClient(); delay(10); return;
@@ -1600,7 +1554,8 @@ void loop() {
 
   if (millis() - lastPageSwitch >= PAGE_INTERVAL_MS) {
     lastPageSwitch = millis();
-    g_page = (g_page + 1) % PAGES;
+    // Avanza alla prossima pagina abilitata
+    if (!advanceToNextEnabled()) ensureCurrentPageEnabled();
     drawCurrentPage();
   }
 
