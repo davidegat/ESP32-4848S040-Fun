@@ -7,6 +7,7 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
 
 ## Funzionalità principali
 - **Rotazione automatica delle pagine** con temi meteo, calendario ICS, countdown, traffico ferroviario e informazioni di sistema.
+- **Selezione pagine personalizzata** direttamente dall'interfaccia web per includere o escludere i widget dalla rotazione.
 - **Widget meteo e qualità dell'aria** con icone condensate, temperatura, percepita, precipitazioni e valori AQI suddivisi per inquinante.
 - **Pagina trasporti** con la prossima partenza dalla stazione di origine alla destinazione configurata, inclusi binario, ritardo e durata del viaggio.
 - **Gestione countdown** per fino a otto eventi futuri con titolo, data/ora e facoltativo promemoria anticipato.
@@ -57,7 +58,7 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
 
 ## Personalizzazione avanzata
 - Modificare colori, font e layout intervenendo sulle costanti `PALETTE_*` e sulle funzioni di rendering nel file `.ino`.
-- Attivare o disattivare pagine specifiche commentando le voci nell'array `pageSequence`.
+- Attivare o disattivare pagine specifiche dall'interfaccia `/settings`, oppure intervenire manualmente sull'array `pageSequence`.
 - Integrare nuove API duplicando il pattern `fetchXXX()` e aggiungendo il relativo widget nel ciclo pagine.
 - Utilizzare la seriale per debug: log strutturati preceduti da `[PAGE]`, `[NET]`, `[UI]` facilitano la diagnostica.
 
@@ -105,6 +106,7 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
 
 ## Core features
 - **Automatic page rotation** covering weather, ICS calendar, countdowns, Swiss transport departures, and system diagnostics.
+- **Custom page selection** straight from the web interface to include or exclude widgets from the rotation.
 - **Weather & air-quality widgets** with compact icons, temperature, feels-like data, precipitation, and pollutant-specific AQI.
 - **Transport page** with the next departure from the origin station to the destination, including platform, delay, and travel time.
 - **Countdown manager** supporting up to eight events with title, date/time, and optional early reminder.
@@ -155,7 +157,7 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
 
 ## Advanced customization
 - Tweak colors, fonts, and layout via the `PALETTE_*` constants and drawing functions in the `.ino` file.
-- Enable or disable specific pages by editing the `pageSequence` array.
+- Enable or disable specific pages from the `/settings` interface, or fall back to editing the `pageSequence` array manually.
 - Add new APIs by cloning the `fetchXXX()` pattern and registering a widget in the rotation loop.
 - Use the serial monitor for diagnostics: logs prefixed with `[PAGE]`, `[NET]`, and `[UI]` help track issues quickly.
 
