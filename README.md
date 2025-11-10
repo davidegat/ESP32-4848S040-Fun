@@ -51,6 +51,7 @@ The sketches explore RGB graphics, touch interfaces, microSD storage, and backli
 * **`Pixxellata/`** – Pixel art editor featuring a touch palette and microSD saving in JPEG/BMP.
 * **`QuadrantiOraQuadra/`** – Collection of watch faces compatible with the OraQuadra Nano v1.3 project.
 * **`RandomYoutube/`** – Generator of random YouTube links and QR codes for display experiments on the panel.
+* **`SquaredCoso/`** – Always-on dashboard that rotates themed pages (weather, calendar, transport, quotes, system stats) with a built-in `/settings` portal.
 
 ---
 
@@ -144,6 +145,7 @@ Gli sketch esplorano grafica RGB, interfacce touch, salvataggio su microSD e con
 * **`Pixxellata/`** – editor di pixel art con palette touch e salvataggio su microSD in JPEG/BMP.
 * **`QuadrantiOraQuadra/`** – raccolta di quadranti grafici compatibili con il progetto OraQuadra Nano v1.3.
 * **`RandomYoutube/`** – generatore di link e codici QR casuali di YouTube per esperimenti grafici sul pannello.
+* **`SquaredCoso/`** – dashboard always-on che alterna pagine tematiche (meteo, calendario, trasporti, citazioni, stato di sistema) configurabili dal portale `/settings`.
 
 ---
 
