@@ -40,3 +40,48 @@ Assicurarsi di rispettare i termini d'uso dei servizi esterni.
 
 ## Licenza
 Questo progetto è distribuito sotto la licenza Creative Commons Attribuzione-Non Commerciale 4.0 Internazionale (CC BY-NC 4.0). Consulta il file `LICENSE.md` nella stessa cartella per i dettagli.
+
+---
+
+# SquaredCoso (English)
+
+SquaredCoso is firmware for the ESP32-S3-based 480×480 TFT panel, designed to turn the 4848S040 module into an always up-to-date information dashboard. The project automatically cycles through multiple themed pages, displaying data sourced from public web services and a remote ICS calendar.
+
+## Key features
+- **Multi-source pages**: current weather and forecasts from wttr.in, air quality from Open-Meteo, analog/digital clocks, daily events from ICS, BTC/CHF exchange rate, motivational quotes from ZenQuotes, system information, and multiple countdowns.
+- **Transport information**: integration with `transport.opendata.ch` to show the next connection between two configurable stations.
+- **Time synchronization**: automatic NTP updates with daylight-saving handling.
+- **Optimized interface**: high-contrast Aurora Borealis palette, sanitized text, and layout with a timed header.
+- **Flexible configuration**: credentials and preferences stored in NVS; captive portal/AP when Wi-Fi credentials are unavailable; `/settings` web UI for city, language, ICS, countdowns, and route details.
+- **Countdown management**: up to eight events with custom names and local ISO dates.
+
+## Hardware and dependencies
+- ESP32-S3 with 4848S040 panel (ST7701 driver, RGB interface, and PWM backlight).
+- [`Arduino_GFX`](https://github.com/moononournation/Arduino_GFX) library for RGB display handling.
+- Standard Arduino/ESP32 dependencies: `WiFi`, `WebServer`, `DNSServer`, `HTTPClient`, `Preferences`, `Wire`, `time`.
+
+## Setup and usage
+1. Compile and upload `SquaredCoso.ino` with the Arduino IDE or `arduino-cli`, ensuring the latest ESP32 core is installed.
+2. On first boot, if Wi-Fi credentials are missing, the device creates an access point with captive portal for credential entry.
+3. Access the web UI at `http://<device-address>/settings` to configure language, location, ICS source, countdowns, transport preferences, and page rotation interval.
+4. The firmware stores settings in NVS and automatically switches to station mode.
+
+## External data sources
+- [wttr.in](https://wttr.in) (weather)
+- [Open-Meteo AQI API](https://open-meteo.com)
+- [ZenQuotes API](https://zenquotes.io)
+- [CoinGecko API](https://www.coingecko.com)
+- [transport.opendata.ch](https://transport.opendata.ch)
+
+Make sure you comply with the terms of use of the external services.
+
+## Code structure
+- **Display and PWM**: initialization of the ST7701 panel and backlight control.
+- **Text sanitization**: normalization of Unicode/HTML characters to ensure proper rendering.
+- **UI**: functions for the header, bold/centered text, page layouts, and paragraphs with word wrap.
+- **Time synchronization**: utilities to sync the clock via NTP and format dates.
+- **Networking**: management of credentials, captive portal, web server, and HTTP requests to APIs.
+- **Persistence**: use of `Preferences` to store configurations, countdowns, and panel settings.
+
+## License
+This project is distributed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) license. See the `LICENSE.md` file in the same folder for details.
