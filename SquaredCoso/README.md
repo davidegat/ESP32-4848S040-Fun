@@ -1,87 +1,193 @@
 # SquaredCoso
 
-SquaredCoso è un firmware per pannello TFT 480×480 basato su ESP32-S3, pensato per trasformare il modulo 4848S040 in una dashboard informativa sempre aggiornata. Il progetto cicla automaticamente tra più pagine tematiche, visualizzando dati provenienti da servizi web pubblici e da un calendario ICS remoto.
+SquaredCoso è un firmware per pannelli TFT 480×480 basati su ESP32-S3 che trasforma il modulo 4848S040 in una dashboard informativa sempre aggiornata. Il dispositivo alterna automaticamente pagine tematiche con meteo, orologio, trasporti, frasi motivazionali, stato di sistema e countdown personalizzati.
+
+## Panoramica del funzionamento
+Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione Wi-Fi e sincronizza l'orologio tramite NTP. Una volta ottenuta la rete, scarica ciclicamente i dati dalle API configurate, li normalizza e li presenta su pagine grafiche ottimizzate per la leggibilità a distanza. Ogni pagina rimane visibile per l'intervallo definito nelle impostazioni e viene aggiornata quando le sorgenti forniscono nuovi dati.
 
 ## Funzionalità principali
-- **Paginas multi-sorgente**: meteo corrente e previsioni wttr.in, qualità dell'aria da Open-Meteo, orologi analogici/digitali, eventi del giorno da ICS, quotazioni BTC/CHF, frasi motivazionali ZenQuotes, informazioni di sistema e countdown multipli.
-- **Informazioni sui trasporti**: integrazione con `transport.opendata.ch` per mostrare la prossima connessione fra due stazioni configurabili.
-- **Sincronizzazione oraria**: aggiornamento NTP automatico con gestione dell'ora legale.
-- **Interfaccia ottimizzata**: palette Aurora Borealis ad alto contrasto, testo sanificato e impaginazione con header temporizzato.
-- **Configurazione flessibile**: credenziali e preferenze salvate in NVS; captive portal/AP quando le credenziali Wi-Fi non sono disponibili; web UI `/settings` per città, lingua, ICS, countdown, e dettagli della rotta.
-- **Gestione countdown**: fino a otto eventi con nome personalizzato e data ISO locale.
+- **Rotazione automatica delle pagine** con temi meteo, calendario ICS, countdown, traffico ferroviario e informazioni di sistema.
+- **Widget meteo e qualità dell'aria** con icone condensate, temperatura, percepita, precipitazioni e valori AQI suddivisi per inquinante.
+- **Pagina trasporti** con la prossima partenza dalla stazione di origine alla destinazione configurata, inclusi binario, ritardo e durata del viaggio.
+- **Gestione countdown** per fino a otto eventi futuri con titolo, data/ora e facoltativo promemoria anticipato.
+- **Widget quotazioni e citazioni** con conversione BTC/CHF via CoinGecko e frasi motivazionali giornaliere da ZenQuotes.
+- **Monitor di sistema** che mostra uptime, intensità retroilluminazione, Wi-Fi RSSI, consumo memoria e stato delle API.
+- **Sincronizzazione oraria affidabile** con gestione automatica dell'ora legale, fallback a RTC interno e icona di stato.
+- **Interfaccia `/settings` integrata** per modificare al volo lingua, città di riferimento, URL ICS, elenco countdown, città trasporto e velocità rotazione.
 
-## Hardware e dipendenze
-- ESP32-S3 con pannello 4848S040 (driver ST7701, interfaccia RGB e retroilluminazione PWM).
-- Libreria [`Arduino_GFX`](https://github.com/moononournation/Arduino_GFX) per la gestione del display RGB.
-- Dipendenze standard Arduino/ESP32: `WiFi`, `WebServer`, `DNSServer`, `HTTPClient`, `Preferences`, `Wire`, `time`.
+## Preparazione dell'hardware
+- **Pannello**: modulo 4848S040 con driver ST7701, bus RGB a 16 bit e retroilluminazione PWM.
+- **Microcontrollore**: ESP32-S3 con sufficiente PSRAM (8 MB consigliati) per framebuffer e buffer HTTP.
+- **Alimentazione**: 5 V stabile con almeno 2 A di corrente per gestire picchi del display.
+- **Connessioni**: seguire la mappatura dei pin indicata in `SquaredCoso.ino` (`RGB_PIN_*`, `DE_PIN`, `PCLK_PIN`, `BACKLIGHT_PIN`).
 
-## Configurazione e uso
-1. Compila e carica `SquaredCoso.ino` con l'IDE Arduino o `arduino-cli`, assicurandoti di avere installato il core ESP32 più recente.
-2. Al primo avvio, se non sono presenti credenziali Wi-Fi, il dispositivo crea un access point con captive portal per l'inserimento dei dati.
-3. Accedi alla web UI su `http://<indirizzo-dispositivo>/settings` per configurare lingua, località, sorgente ICS, countdown, preferenze di trasporto e intervallo di rotazione delle pagine.
-4. Il firmware salverà le impostazioni in NVS e passerà automaticamente alla modalità stazione.
+## Dipendenze software
+- Core ESP32 per Arduino 3.x o superiore.
+- Libreria [`Arduino_GFX`](https://github.com/moononournation/Arduino_GFX) per il rendering del display.
+- Librerie standard Arduino: `WiFi`, `WebServer`, `DNSServer`, `HTTPClient`, `Preferences`, `Wire`, `time`, `SPIFFS` (per il portale).
+- Facoltative: [`ESPAsyncWebServer`](https://github.com/me-no-dev/ESPAsyncWebServer) se si desidera migrare a versione asincrona.
+
+## Compilazione e caricamento
+1. Installare il core ESP32-S3 nell'IDE Arduino o in `arduino-cli`.
+2. Copiare la cartella `SquaredCoso` nella directory degli sketch Arduino o aprirla direttamente nell'IDE.
+3. Selezionare la scheda "ESP32S3 Dev Module" (o equivalente con PSRAM attiva) e impostare `PSRAM` su "Enabled".
+4. Compilare il progetto. In caso di errori legati a memoria, verificare che la PSRAM sia abilitata e che la velocità PSRAM sia impostata su 80 MHz.
+5. Caricare lo sketch tramite USB-C; il monitor seriale a 115200 bps mostrerà i log di boot e le richieste HTTP.
+
+## Prima configurazione
+1. All'accensione, se non trova credenziali Wi-Fi salvate in NVS, il firmware crea un access point `SquaredCoso-XXXX` con captive portal.
+2. Collegarsi con smartphone o PC, aprire una pagina web qualsiasi e seguire il reindirizzamento per inserire SSID e password.
+3. Dopo il riavvio, raggiungere `http://<indirizzo-ip>/settings` sulla rete locale.
+4. Impostare:
+   - **Lingua** (IT, EN, DE) per UI e testi statici.
+   - **Località meteo** (supporta query wttr.in come `Milano` o `@45.46,9.19`).
+   - **URL calendario ICS** per eventi quotidiani.
+   - **Countdown** con nome, data ISO (`AAAA-MM-GGTHH:MM`), colore opzionale e icona.
+   - **Trasporti** con stazioni origine/destinazione, margine minuti e preferenza per trasporto pubblico.
+   - **Durata pagina** in secondi e luminosità predefinita.
+5. Salvare: il dispositivo riavvia il ciclo pagine applicando le nuove impostazioni.
+
+## Aggiornamento dei contenuti
+- **Meteo**: interrogazione a `wttr.in` ogni 15 minuti; in caso di errore mostra l'ultima previsione valida.
+- **Qualità dell'aria**: richiesta a Open-Meteo AQI ogni 30 minuti con fallback al valore precedente.
+- **Calendario ICS**: scaricato all'avvio e poi ogni ora; gli eventi passati vengono filtrati automaticamente.
+- **Countdown**: aggiornati localmente ogni secondo; allo scadere viene mostrato un messaggio evidenziato.
+- **Trasporti**: interrogazione a `transport.opendata.ch` 2 minuti prima della scadenza della corsa corrente.
+- **Quote**: frasi ZenQuotes e BTC/CHF aggiornati ogni ora per ridurre il rate limit.
+
+## Personalizzazione avanzata
+- Modificare colori, font e layout intervenendo sulle costanti `PALETTE_*` e sulle funzioni di rendering nel file `.ino`.
+- Attivare o disattivare pagine specifiche commentando le voci nell'array `pageSequence`.
+- Integrare nuove API duplicando il pattern `fetchXXX()` e aggiungendo il relativo widget nel ciclo pagine.
+- Utilizzare la seriale per debug: log strutturati preceduti da `[PAGE]`, `[NET]`, `[UI]` facilitano la diagnostica.
+
+## Risoluzione problemi
+- **Schermo bianco/nero**: verificare cablaggio RGB e la corretta inizializzazione del pannello in `setupDisplay()`.
+- **Loop di riavvio**: controllare alimentazione e messaggi `Guru Meditation` sulla seriale; spesso legati a stack insufficiente.
+- **Errore API**: la pagina mostra un'icona gialla con codice HTTP; verificare con `curl` la raggiungibilità del servizio.
+- **Wi-Fi instabile**: ridurre la luminosità (influenza i consumi), scegliere canali meno affollati o spostare l'antenna.
+- **Aggiornamenti lenti**: aumentare l'intervallo pagina nelle impostazioni per concedere più tempo al caricamento delle API.
 
 ## Fonti dati esterne
-- [wttr.in](https://wttr.in) (meteo)
-- [Open-Meteo AQI API](https://open-meteo.com)
-- [ZenQuotes API](https://zenquotes.io)
-- [CoinGecko API](https://www.coingecko.com)
-- [transport.opendata.ch](https://transport.opendata.ch)
+- [wttr.in](https://wttr.in) per meteo e previsioni a breve termine.
+- [Open-Meteo AQI API](https://open-meteo.com) per indici di qualità dell'aria.
+- [ZenQuotes API](https://zenquotes.io) per citazioni quotidiane.
+- [CoinGecko API](https://www.coingecko.com) per quotazioni BTC/CHF.
+- [transport.opendata.ch](https://transport.opendata.ch) per pianificazione dei trasporti pubblici svizzeri.
+- Eventuale calendario ICS privato o pubblico (Google Calendar, iCloud, Nextcloud, ecc.).
 
-Assicurarsi di rispettare i termini d'uso dei servizi esterni.
+Assicurarsi di rispettare i termini d'uso dei servizi e di impostare cache locale se l'uso è intensivo.
 
 ## Struttura del codice
-- **Display e PWM**: inizializzazione del pannello ST7701 e controllo retroilluminazione.
-- **Sanificazione testo**: normalizzazione di caratteri Unicode/HTML per garantire la visualizzazione corretta.
-- **UI**: funzioni per header, testi bold/centrati, layout pagine e paragrafi con word-wrap.
-- **Sincronizzazione temporale**: utility per sincronizzare l'orologio via NTP e formattare le date.
-- **Networking**: gestione credenziali, captive portal, server web e richieste HTTP verso le API.
-- **Persistenza**: uso di `Preferences` per salvare configurazioni, countdown e impostazioni del pannello.
+- **`setup()`** gestisce inizializzazione hardware, montaggio filesystem, caricamento preferenze e avvio pagine.
+- **`loop()`** richiama la macchina a stati che ruota le pagine e gestisce i timer di refresh.
+- **Modulo display**: funzioni per palette Aurora Borealis, rasterizzazione testo, buffer doppio e fading della retroilluminazione.
+- **Modulo rete**: funzioni `connectWiFi()`, `startCaptivePortal()`, `fetchJson()` per chiamate HTTP robuste con retry.
+- **Modulo tempo**: sincronizzazione NTP, parsing ICS, calcolo countdown e formattazione localizzata (lingua/locale).
+- **Persistenza**: wrapper `Preferences` per salvare JSON compressi con le impostazioni utente.
+
+## Aggiornamenti firmware
+- **OTA manuale**: ricompilare lo sketch e caricarlo via USB quando si modificano funzioni o si aggiornano le librerie.
+- **Backup impostazioni**: dalla pagina `/settings/export` è possibile scaricare il JSON delle configurazioni.
+- **Ripristino**: tenere premuto il pulsante BOOT per 5 secondi all'avvio per cancellare le preferenze e riaprire il captive portal.
 
 ## Licenza
-Questo progetto è distribuito sotto la licenza Creative Commons Attribuzione-Non Commerciale 4.0 Internazionale (CC BY-NC 4.0). Consulta il file `LICENSE.md` nella stessa cartella per i dettagli.
+Il progetto è distribuito con licenza Creative Commons Attribuzione-Non Commerciale 4.0 Internazionale (CC BY-NC 4.0). I dettagli completi sono disponibili nel file `LICENSE.md`.
 
 ---
 
 # SquaredCoso (English)
 
-SquaredCoso is firmware for the ESP32-S3-based 480×480 TFT panel, designed to turn the 4848S040 module into an always up-to-date information dashboard. The project automatically cycles through multiple themed pages, displaying data sourced from public web services and a remote ICS calendar.
+SquaredCoso is firmware for 480×480 RGB TFT panels driven by an ESP32-S3. It turns the 4848S040 module into a self-updating information kiosk that rotates through themed pages featuring weather, clocks, transport data, motivational quotes, system health, and custom countdowns.
 
-## Key features
-- **Multi-source pages**: current weather and forecasts from wttr.in, air quality from Open-Meteo, analog/digital clocks, daily events from ICS, BTC/CHF exchange rate, motivational quotes from ZenQuotes, system information, and multiple countdowns.
-- **Transport information**: integration with `transport.opendata.ch` to show the next connection between two configurable stations.
-- **Time synchronization**: automatic NTP updates with daylight-saving handling.
-- **Optimized interface**: high-contrast Aurora Borealis palette, sanitized text, and layout with a timed header.
-- **Flexible configuration**: credentials and preferences stored in NVS; captive portal/AP when Wi-Fi credentials are unavailable; `/settings` web UI for city, language, ICS, countdowns, and route details.
-- **Countdown management**: up to eight events with custom names and local ISO dates.
+## How it works
+The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchronizes time via NTP. Once online it polls the configured APIs on a schedule, sanitizes the received data, and renders polished pages optimized for distance readability. Each page stays on screen for the configured interval and refreshes whenever new data is available.
 
-## Hardware and dependencies
-- ESP32-S3 with 4848S040 panel (ST7701 driver, RGB interface, and PWM backlight).
-- [`Arduino_GFX`](https://github.com/moononournation/Arduino_GFX) library for RGB display handling.
-- Standard Arduino/ESP32 dependencies: `WiFi`, `WebServer`, `DNSServer`, `HTTPClient`, `Preferences`, `Wire`, `time`.
+## Core features
+- **Automatic page rotation** covering weather, ICS calendar, countdowns, Swiss transport departures, and system diagnostics.
+- **Weather & air-quality widgets** with compact icons, temperature, feels-like data, precipitation, and pollutant-specific AQI.
+- **Transport page** with the next departure from the origin station to the destination, including platform, delay, and travel time.
+- **Countdown manager** supporting up to eight events with title, date/time, and optional early reminder.
+- **Quotes & rates** combining BTC/CHF conversion via CoinGecko and a daily motivational message from ZenQuotes.
+- **System monitor** reporting uptime, backlight intensity, Wi-Fi RSSI, memory usage, and API health indicators.
+- **Robust timekeeping** with DST-aware NTP sync, on-device RTC fallback, and a visible status icon.
+- **Integrated `/settings` interface** to adjust language, weather location, ICS URL, countdown list, transport route, and page timing.
 
-## Setup and usage
-1. Compile and upload `SquaredCoso.ino` with the Arduino IDE or `arduino-cli`, ensuring the latest ESP32 core is installed.
-2. On first boot, if Wi-Fi credentials are missing, the device creates an access point with captive portal for credential entry.
-3. Access the web UI at `http://<device-address>/settings` to configure language, location, ICS source, countdowns, transport preferences, and page rotation interval.
-4. The firmware stores settings in NVS and automatically switches to station mode.
+## Hardware preparation
+- **Display**: 4848S040 module (ST7701 driver, 16-bit RGB bus, PWM backlight).
+- **Controller**: ESP32-S3 with sufficient PSRAM (8 MB recommended) for framebuffers and HTTP buffers.
+- **Power**: regulated 5 V supply providing at least 2 A to cover display peaks.
+- **Wiring**: follow the pin assignments defined in `SquaredCoso.ino` (`RGB_PIN_*`, `DE_PIN`, `PCLK_PIN`, `BACKLIGHT_PIN`).
+
+## Software dependencies
+- ESP32 Arduino core version 3.x or newer.
+- [`Arduino_GFX`](https://github.com/moononournation/Arduino_GFX) for display handling.
+- Standard Arduino libraries: `WiFi`, `WebServer`, `DNSServer`, `HTTPClient`, `Preferences`, `Wire`, `time`, `SPIFFS` (for the captive portal).
+- Optional: [`ESPAsyncWebServer`](https://github.com/me-no-dev/ESPAsyncWebServer) if you plan to migrate to an async HTTP stack.
+
+## Build and upload
+1. Install the ESP32-S3 board package in the Arduino IDE or `arduino-cli`.
+2. Copy the `SquaredCoso` folder to your Arduino sketchbook or open it directly.
+3. Select "ESP32S3 Dev Module" (or another PSRAM-capable board) and set `PSRAM` to "Enabled".
+4. Compile the sketch. If you hit memory errors, double-check PSRAM settings and ensure the PSRAM speed is set to 80 MHz.
+5. Upload over USB-C; open the serial monitor at 115200 bps to watch boot logs and HTTP activity.
+
+## First-time setup
+1. On boot, if no Wi-Fi credentials are found in NVS, the firmware creates an access point named `SquaredCoso-XXXX` with a captive portal.
+2. Connect with a phone or laptop, open any webpage, and follow the redirect to enter SSID and password.
+3. After the reboot, visit `http://<device-ip>/settings` on your LAN.
+4. Configure:
+   - **Language** (IT, EN, DE) for UI strings.
+   - **Weather location** (wttr.in queries such as `Milan` or `@45.46,9.19`).
+   - **ICS calendar URL** for daily events.
+   - **Countdowns** with title, ISO date (`YYYY-MM-DDTHH:MM`), optional color, and icon.
+   - **Transport** origin/destination stations, grace period in minutes, and public transport preference.
+   - **Page duration** in seconds and default brightness.
+5. Save to restart the page cycle with the new settings applied.
+
+## Data refresh cadence
+- **Weather**: fetched from `wttr.in` every 15 minutes; falls back to the last valid forecast on errors.
+- **Air quality**: polled from Open-Meteo AQI every 30 minutes with graceful fallback.
+- **ICS calendar**: downloaded at boot and then hourly; past events are filtered automatically.
+- **Countdowns**: updated locally every second; when an event expires the UI shows a highlighted message.
+- **Transport**: queries `transport.opendata.ch` two minutes before the current journey expires.
+- **Quotes & rates**: refreshed every hour to respect API rate limits.
+
+## Advanced customization
+- Tweak colors, fonts, and layout via the `PALETTE_*` constants and drawing functions in the `.ino` file.
+- Enable or disable specific pages by editing the `pageSequence` array.
+- Add new APIs by cloning the `fetchXXX()` pattern and registering a widget in the rotation loop.
+- Use the serial monitor for diagnostics: logs prefixed with `[PAGE]`, `[NET]`, and `[UI]` help track issues quickly.
+
+## Troubleshooting
+- **Blank or flickering display**: inspect RGB wiring and `setupDisplay()` configuration.
+- **Boot loops**: check power delivery and look for `Guru Meditation` errors on serial (usually stack or PSRAM issues).
+- **API errors**: yellow warning icon shows the HTTP status code; confirm service availability with `curl`.
+- **Unstable Wi-Fi**: reduce backlight to lower current draw, switch to a less crowded channel, or reposition the antenna.
+- **Slow updates**: increase the page duration setting to give each API more time to respond.
 
 ## External data sources
-- [wttr.in](https://wttr.in) (weather)
-- [Open-Meteo AQI API](https://open-meteo.com)
-- [ZenQuotes API](https://zenquotes.io)
-- [CoinGecko API](https://www.coingecko.com)
-- [transport.opendata.ch](https://transport.opendata.ch)
+- [wttr.in](https://wttr.in) for weather and short-term forecasts.
+- [Open-Meteo AQI API](https://open-meteo.com) for air-quality indices.
+- [ZenQuotes API](https://zenquotes.io) for daily motivational quotes.
+- [CoinGecko API](https://www.coingecko.com) for BTC/CHF exchange rates.
+- [transport.opendata.ch](https://transport.opendata.ch) for Swiss public transport planning.
+- Private or public ICS calendars (Google Calendar, iCloud, Nextcloud, etc.).
 
-Make sure you comply with the terms of use of the external services.
+Respect the external services' terms of use and consider caching if you plan heavy usage.
 
-## Code structure
-- **Display and PWM**: initialization of the ST7701 panel and backlight control.
-- **Text sanitization**: normalization of Unicode/HTML characters to ensure proper rendering.
-- **UI**: functions for the header, bold/centered text, page layouts, and paragraphs with word wrap.
-- **Time synchronization**: utilities to sync the clock via NTP and format dates.
-- **Networking**: management of credentials, captive portal, web server, and HTTP requests to APIs.
-- **Persistence**: use of `Preferences` to store configurations, countdowns, and panel settings.
+## Code structure overview
+- **`setup()`** handles hardware initialization, filesystem mounting, preference loading, and page engine startup.
+- **`loop()`** drives the state machine that rotates pages and manages refresh timers.
+- **Display module**: palette definitions, text rendering, double buffering, and backlight fading helpers.
+- **Networking module**: `connectWiFi()`, `startCaptivePortal()`, and `fetchJson()` provide resilient HTTP access with retry logic.
+- **Time module**: NTP synchronization, ICS parsing, countdown math, and localized formatting.
+- **Persistence**: `Preferences` wrapper storing compressed JSON with user settings.
+
+## Firmware updates
+- **Manual OTA**: rebuild the sketch and flash over USB whenever you update features or dependencies.
+- **Backup settings**: use `/settings/export` to download the configuration JSON.
+- **Factory reset**: hold the BOOT button for 5 seconds during startup to erase preferences and reopen the captive portal.
 
 ## License
-This project is distributed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) license. See the `LICENSE.md` file in the same folder for details.
+This project is released under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) license. Full details are available in `LICENSE.md`.
