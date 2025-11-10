@@ -912,6 +912,7 @@ static void pagePT() {
 
   int y = PAGE_Y;
 
+  // Mostra la rotta (origine/destinazione)
   String route = sanitizeText(g_from_station) + "/" + sanitizeText(g_to_station);
   uint8_t routeScale = 3;
   if (route.length() > 18) routeScale = 2;
@@ -921,10 +922,13 @@ static void pagePT() {
   drawHLine(y); 
   y += 12;
 
+  // “Partenza HH:MM” - ingrandito
   String depLine = String("Partenza ") + (pt_dep_time.length() ? pt_dep_time : "--:--");
-  drawBoldMain(PAGE_X, y + CHAR_H, depLine);
-  y += (CHAR_H * 2) + 6;
+  uint8_t depScale = 3;  // aumentato da 1x (default) a 3x
+  drawCenteredBold(y, depLine, depScale, COL_TEXT, COL_BG);
+  y += (BASE_CHAR_H * depScale) + 10;
 
+  // Linea (es. IC 21, RE 8, ecc.)
   String lineLbl = pt_line.length() ? pt_line : String("--");
   uint8_t lineScale = 6;
   if (lineLbl.length() > 10) lineScale = 5;
@@ -935,6 +939,7 @@ static void pagePT() {
   drawHLine(y);
   y += 12;
 }
+
 
 // =========================== Pagine display =================================
 // BTC: valore centrale grande + info di fonte e “età” dato.
