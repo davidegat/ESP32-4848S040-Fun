@@ -52,6 +52,7 @@ The sketches explore RGB graphics, touch interfaces, microSD storage, and backli
 * **`QuadrantiOraQuadra/`** – Collection of watch faces compatible with the OraQuadra Nano v1.3 project.
 * **`RandomYoutube/`** – Generator of random YouTube links and QR codes for display experiments on the panel.
 * **`SquaredCoso/`** – Always-on dashboard that rotates themed pages (weather, calendar, transport, quotes, system stats) with a built-in `/settings` portal.
+* **`Pongino/`** – Arkanoid-style game tailored for the 4848S040 panel with touch-controlled paddle, power-ups, and animated effects.
 
 ---
 
@@ -146,6 +147,7 @@ Gli sketch esplorano grafica RGB, interfacce touch, salvataggio su microSD e con
 * **`QuadrantiOraQuadra/`** – raccolta di quadranti grafici compatibili con il progetto OraQuadra Nano v1.3.
 * **`RandomYoutube/`** – generatore di link e codici QR casuali di YouTube per esperimenti grafici sul pannello.
 * **`SquaredCoso/`** – dashboard always-on che alterna pagine tematiche (meteo, calendario, trasporti, citazioni, stato di sistema) configurabili dal portale `/settings`.
+* **`Pongino/`** – clone di Arkanoid per il pannello 4848S040 con paddle touch, power-up e effetti animati.
 
 ---
 
