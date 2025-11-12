@@ -161,12 +161,17 @@ struct Bonus {
   int px,py;
   int vy;
   uint16_t color;
+  // S-curve
+  int   baseX;
+  int   sAmp;
+  float sOmega;
+  float sPhase;
 };
-Bonus bonusDrop = { false, 0,0, 18,14, 0,0, 3, 0x07FF };
+Bonus bonusDrop = { false, 0,0, 18,14, 0,0, 3, 0x07FF, 0, 20, 0.018f, 0.0f };
 uint32_t lastBonusMs = 0;
 const uint32_t BONUS_PERIOD_MS = 8000;
 
-Bonus pdownDrop = { false, 0,0, 18,14, 0,0, 3, 0xF81F };
+Bonus pdownDrop = { false, 0,0, 18,14, 0,0, 3, 0xF81F, 0, 20, 0.018f, 0.0f };
 uint32_t lastPowerDownMs = 0;
 const uint32_t PDOWN_PERIOD_MS = 16000;
 
@@ -268,6 +273,112 @@ static inline int missilesActiveCount() {
 }
 static inline bool anyPickupActive() { return bonusDrop.active || pdownDrop.active; }
 
+// ======= FORWARD DECL =======
+static inline void safeClearRegion(int x,int y,int w,int h, bool redrawBricks=true);
+
+// ===== Overlay testuale anti-flicker =====
+struct OverlayMsg {
+  bool active;
+  char text[48];
+  uint8_t size;
+  int tx, ty;             // posizione testo
+  int bx, by, bw, bh;     // bounding box per clear
+};
+static OverlayMsg overlay = { false, "", 2, 0,0, 0,0,0,0 };
+
+static inline void drawOverlayNow() {
+  if (!overlay.active || overlay.text[0] == '\0') return;
+  gfx->setTextSize(overlay.size);
+  gfx->setTextColor(COL_TEXT, COL_BG); // background impostato: nessun alone
+  gfx->setCursor(overlay.tx, overlay.ty + (8 * overlay.size));
+  gfx->print(overlay.text);
+}
+static inline void computeOverlayBox(const char* msg, uint8_t size, int &x, int &y, int &w, int &h) {
+  const int len = strlen(msg);
+  w = len * 6 * size;
+  h = 8 * size;
+  x = (SCREEN_W - w) / 2;
+  y = (SCREEN_H - h) / 2;
+  // padding per evitare bordi tagliati
+  x -= 10; y -= 10; w += 20; h += 20;
+  if (x < 0) x = 0; if (y < 0) y = 0;
+  if (x + w > SCREEN_W) w = SCREEN_W - x;
+  if (y + h > SCREEN_H) h = SCREEN_H - y;
+}
+static inline void showOverlayCentered(const char* msg, uint8_t size) {
+  int bx, by, bw, bh;
+  computeOverlayBox(msg, size, bx, by, bw, bh);
+  gfx->fillRect(bx, by, bw, bh, COL_BG);
+  const int len = strlen(msg);
+  const int tx = bx + (bw - len*6*size)/2;
+  const int ty = by + (bh - 8*size)/2;
+  overlay.active = true;
+  overlay.size = size;
+  strncpy(overlay.text, msg, sizeof(overlay.text)-1);
+  overlay.text[sizeof(overlay.text)-1] = '\0';
+  overlay.tx = tx; overlay.ty = ty;
+  overlay.bx = bx; overlay.by = by; overlay.bw = bw; overlay.bh = bh;
+  drawOverlayNow();
+}
+
+// ---- HUD ----
+static void drawHUD_ifDirty(); // forward
+
+// Nuovo: forziamo il ridisegno dell'HUD (senza check "dirty")
+static inline void drawHUD_force() {
+  const int HUD_H = 26;
+  // pulizia banda
+  gfx->fillRect(0, 0, SCREEN_W, HUD_H, COL_BG);
+  for (int i=0;i<STAR_COUNT;++i) {
+    if (stars[i].y < HUD_H) { gfx->drawPixel(stars[i].x, stars[i].y, stars[i].color); }
+  }
+  // contenuto HUD identico a drawHUD_ifDirty()
+  gfx->setTextColor(COL_TEXT, COL_BG);
+  gfx->setTextSize(2);
+  gfx->setCursor(10, 16);
+  gfx->print(score);
+
+  const int pad = 8;
+  const int iconW = BALL_SIZE;
+  const int totalW = 3*iconW + 2*pad;
+  const int baseX = SCREEN_W - 10 - totalW;
+  const int baseY = 2;
+
+  for (int i=0;i<3;i++) {
+    const int x = baseX + i*(iconW + pad);
+    if (i < lives) {
+      const int w = BALL_SIZE;
+      const int h = BALL_SIZE + 2;
+      const int cx = x + (w>>1);
+      gfx->fillTriangle(cx, baseY, x, baseY + h/2, x + w, baseY + h/2, COL_BALL);
+      gfx->fillTriangle(cx, baseY + h/2, x + w/4, baseY + h, x + (3*w)/4, baseY + h, COL_GRAYL);
+      gfx->fillTriangle(x, baseY + h/2, x + w/5, baseY + h, cx, baseY + h - 2, 0xF800);
+      gfx->fillTriangle(x + w, baseY + h/2, x + w - w/5, baseY + h, cx, baseY + h - 2, 0xF800);
+    }
+  }
+  lastHUDms = millis();
+  lastScore = score;
+  lastLives = lives;
+}
+
+// >>> FIX per rimozione senza residui <<<
+static inline void hideOverlay() {
+  if (!overlay.active) return;
+  // Salva box e DISATTIVA prima di pulire: evitare redraw del testo
+  int bx = overlay.bx, by = overlay.by, bw = overlay.bw, bh = overlay.bh;
+  overlay.active = false;
+  overlay.text[0] = '\0';
+  overlay.tx = overlay.ty = 0;
+  overlay.bx = overlay.by = overlay.bw = overlay.bh = 0;
+
+  // Ripristina area (stelle + mattoni + HUD/frecce se necessario)
+  safeClearRegion(bx, by, bw, bh, true);
+}
+
+static inline bool rectsOverlap(int x,int y,int w,int h, int X,int Y,int W,int H) {
+  return !(X > x+w  || X+W < x || Y > y+h || Y+H < y);
+}
+
 // ----- Disegni base -----
 static inline void drawPaddleRounded(const PaddleS &p) {
   const int r = p.h>>1;
@@ -322,7 +433,7 @@ static inline void clearRegion(int x,int y,int w,int h) {
 
 // ---------- Safe clear ----------
 static inline void redrawBricksInRegion(int rx,int ry,int rw,int rh);
-static inline void safeClearRegion(int x,int y,int w,int h, bool redrawBricks=true) {
+static inline void safeClearRegion(int x,int y,int w,int h, bool redrawBricks) {
   const int px = paddle.x, py = paddle.y, pw = paddle.w, ph = paddle.h;
   const int bx = (int)ball.x, by = (int)ball.y, bw = BALL_SIZE, bh = BALL_SIZE;
 
@@ -331,6 +442,21 @@ static inline void safeClearRegion(int x,int y,int w,int h, bool redrawBricks=tr
 
   clearRegion(x,y,w,h);
   if (redrawBricks) redrawBricksInRegion(x,y,w,h);
+
+  // Nuovo: se l'area tocca HUD o frecce, ridisegnali per evitare residui
+  const int HUD_H = 26;
+  if (y < HUD_H) { drawHUD_force(); }
+  // frecce in basso: triangoli h=12 a ~SCREEN_H-14..SCREEN_H-2
+  if (y + h >= SCREEN_H - 32) { 
+    // ripassiamo la zona bassa in sicurezza
+    // (stelle già ripristinate da clearRegion)
+    drawCornerHints();
+  }
+
+  // Se overlay è attivo e l’area si sovrappone, ridisegnalo
+  if (overlay.active && rectsOverlap(x,y,w,h, overlay.bx, overlay.by, overlay.bw, overlay.bh)) {
+    drawOverlayNow();
+  }
 
   if (hitPaddle) drawPaddleRounded(paddle);
   if (hitBall)   drawBallNow();
@@ -487,7 +613,7 @@ static inline void resetParticles() { for (int i=0;i<MAX_PARTICLES;++i) particle
 static inline void flashRect(int x,int y,int w,int h) {
   gfx->fillRect(x, y, w, h, 0xFFFF);
   delay(16);
-  safeClearRegion(x, y, w, h);
+  safeClearRegion(x, y, w, h, true);
 }
 static void spawnExplosion(int cx,int cy,int w,int h, uint16_t color, int count = 8, bool oobOnly = false, bool behindPaddle = false) {
   for (int n=0;n<count;++n) {
@@ -538,7 +664,7 @@ static void spawnExplosion(int cx,int cy,int w,int h, uint16_t color, int count 
 static void updateParticles() {
   for (int i=0;i<MAX_PARTICLES;++i) {
     if (!particles[i].alive) continue;
-    safeClearRegion(particles[i].px, particles[i].py, particles[i].sz, particles[i].sz);
+    safeClearRegion(particles[i].px, particles[i].py, particles[i].sz, particles[i].sz, true);
   }
   for (int i=0;i<MAX_PARTICLES;++i) {
     Particle &p = particles[i];
@@ -554,6 +680,9 @@ static void updateParticles() {
     const int ix = (int)p.x, iy = (int)p.y;
     gfx->fillRect(ix, iy, p.sz, p.sz, p.color);
     redrawBricksInRegion(ix, iy, p.sz, p.sz);
+    if (overlay.active && rectsOverlap(ix, iy, p.sz, p.sz, overlay.bx, overlay.by, overlay.bw, overlay.bh)) {
+      drawOverlayNow();
+    }
     p.px = ix; p.py = iy;
   }
 }
@@ -573,7 +702,7 @@ static void drawHUD_ifDirty() {
   const bool dirty = (score != lastScore) || (lives != lastLives) || (now - lastHUDms >= 1000);
   if (!dirty) return;
 
-  safeClearRegion(0, 0, SCREEN_W, 26);
+  safeClearRegion(0, 0, SCREEN_W, 26, true);
 
   gfx->setTextColor(COL_TEXT, COL_BG);
   gfx->setTextSize(2);
@@ -585,7 +714,7 @@ static void drawHUD_ifDirty() {
   const int totalW = 3*iconW + 2*pad;
   const int baseX = SCREEN_W - 10 - totalW;
   const int baseY = 2;
-  safeClearRegion(baseX-2, 0, totalW+6, 26);
+  safeClearRegion(baseX-2, 0, totalW+6, 26, true);
   for (int i=0;i<3;i++) {
     const int x = baseX + i*(iconW + pad);
     if (i < lives) drawSmallShipIcon(x, baseY);
@@ -596,14 +725,14 @@ static void drawHUD_ifDirty() {
   lastHUDms = now;
 }
 
-// ---------- Testi centrati ----------
+// ---------- Testi centrati legacy ----------
 static inline void drawCenteredMessageSized(const char *msg, uint8_t size) {
   const int len = strlen(msg);
   const int w = len * 6 * size;
   const int h = 8 * size;
   const int x = (SCREEN_W - w) / 2;
   const int y = (SCREEN_H - h) / 2;
-  safeClearRegion(x - 10, y - 10, w + 20, h + 20);
+  safeClearRegion(x - 10, y - 10, w + 20, h + 20, true);
   gfx->setTextSize(size);
   gfx->setTextColor(COL_TEXT, COL_BG);
   gfx->setCursor(x, y + h);
@@ -615,21 +744,18 @@ static inline void clearCenteredMessageSized(const char *msg, uint8_t size) {
   const int h = 8 * size;
   const int x = (SCREEN_W - w) / 2;
   const int y = (SCREEN_H - h) / 2;
-  safeClearRegion(x - 20, y - 20, w + 40, h + 40);
+  safeClearRegion(x - 20, y - 20, w + 40, h + 40, true);
 }
 static inline void clearAnyShuffleMessage() {
-  const int cw = 300, ch = 120;
-  const int cx = (SCREEN_W - cw) / 2;
-  const int cy = (SCREEN_H - ch) / 2;
-  safeClearRegion(cx, cy, cw, ch, true);
+  hideOverlay();
   shuffleMsgUntilMs = 0;
 }
 
-// ---------- SCHERMATA GAME OVER (hard, no flicker) ----------
+// ---------- SCHERMATA GAME OVER ----------
 static inline void drawGameOverHard() {
   gfx->fillScreen(COL_BG);
   const char *msg = "GAME OVER";
-  const uint8_t size = 6; // grande
+  const uint8_t size = 6;
   const int len = strlen(msg);
   const int w = len * 6 * size;
   const int h = 8 * size;
@@ -662,19 +788,25 @@ static inline void drawBlinkingBonusLike(int x,int y,int w,int h, uint16_t coreB
   const uint16_t edge = COL_PURPLE;
   drawPowerUpDiamond(x,y,w,h, core, edge);
 }
-static inline int randXForDrop() { return random(0, SCREEN_W - 18); }
+static inline int randXForDrop(int amp, int objW) {
+  const int minX = amp;
+  const int maxX = SCREEN_W - amp - objW;
+  return random(minX, maxX > minX ? maxX : minX+1);
+}
 
-// Spawn: mai power-up e power-down insieme; mai con missile presente
 static inline bool canSpawnPickup() { return !anyPickupActive() && missilesActiveCount()==0; }
 
 static void spawnBonus() {
   if (!canSpawnPickup()) { lastBonusMs = millis(); return; }
   bonusDrop.active = true;
-  int tries = 8;
-  int x = randXForDrop();
-  while (tries-- && abs(x - pdownDrop.x) < DROPS_MIN_X_SEP) x = randXForDrop();
-  bonusDrop.x = x;
+  bonusDrop.sAmp   = 22;
+  bonusDrop.sOmega = 0.018f;
+  bonusDrop.sPhase = (float)random(0,628)/100.0f;
+  bonusDrop.w = 18; bonusDrop.h = 14;
+
+  bonusDrop.baseX = randXForDrop(bonusDrop.sAmp, bonusDrop.w);
   bonusDrop.y = 0;
+  bonusDrop.x  = bonusDrop.baseX + (int)(bonusDrop.sAmp * sinf(bonusDrop.sPhase));
   bonusDrop.px = bonusDrop.x; bonusDrop.py = bonusDrop.y;
   bonusDrop.vy = 3 + (random(0,2));
   bonusDrop.color = COL_CYAN;
@@ -682,11 +814,14 @@ static void spawnBonus() {
 static void spawnPowerDown() {
   if (!canSpawnPickup()) { lastPowerDownMs = millis(); return; }
   pdownDrop.active = true;
-  int tries = 8;
-  int x = randXForDrop();
-  while (tries-- && abs(x - bonusDrop.x) < DROPS_MIN_X_SEP) x = randXForDrop();
-  pdownDrop.x = x;
+  pdownDrop.sAmp   = 22;
+  pdownDrop.sOmega = 0.018f;
+  pdownDrop.sPhase = (float)random(0,628)/100.0f;
+  pdownDrop.w = 18; pdownDrop.h = 14;
+
+  pdownDrop.baseX = randXForDrop(pdownDrop.sAmp, pdownDrop.w);
   pdownDrop.y = 0;
+  pdownDrop.x  = pdownDrop.baseX + (int)(pdownDrop.sAmp * sinf(pdownDrop.sOmega * pdownDrop.y + pdownDrop.sPhase));
   pdownDrop.px = pdownDrop.x; pdownDrop.py = pdownDrop.y;
   pdownDrop.vy = 3 + (random(0,2));
   pdownDrop.color = COL_MAG;
@@ -709,8 +844,8 @@ static inline void drawPowerDownNow() {
   drawBlinkingBonusLike(pdownDrop.x, pdownDrop.y, pdownDrop.w, pdownDrop.h, pdownDrop.color);
   redrawBricksInRegion(pdownDrop.x, pdownDrop.y, pdownDrop.w, pdownDrop.h);
 }
-static inline void deactivateBonus()     { safeClearRegion(bonusDrop.x,  bonusDrop.y,  bonusDrop.w,  bonusDrop.h);  bonusDrop.active  = false; }
-static inline void deactivatePowerDown() { safeClearRegion(pdownDrop.x, pdownDrop.y, pdownDrop.w, pdownDrop.h);    pdownDrop.active  = false; }
+static inline void deactivateBonus()     { safeClearRegion(bonusDrop.x,  bonusDrop.y,  bonusDrop.w,  bonusDrop.h, true);  bonusDrop.active  = false; }
+static inline void deactivatePowerDown() { safeClearRegion(pdownDrop.x, pdownDrop.y, pdownDrop.w, pdownDrop.h, true);    pdownDrop.active  = false; }
 
 // ---------- Paddle FX lampeggio ----------
 static inline void maybeUpdatePaddleBlinkFx() {
@@ -826,7 +961,6 @@ static inline void drawMissileStylized(int x,int y,int w,int h, uint16_t nose, u
 }
 static inline void resetMissiles() { for (int i=0;i<MAX_MISSILES;++i) missiles[i].active = false; }
 static void spawnMissile(int sx, int sy) {
-  // vincoli richiesti: non se c'è un pickup attivo, e max 1 missile a schermo
   if (anyPickupActive()) return;
   if (missilesActiveCount() >= 1) return;
   for (int i=0;i<MAX_MISSILES;++i) if (!missiles[i].active) {
@@ -856,7 +990,7 @@ static inline void cleanupParticlesInRect(int x,int y,int w,int h) {
     if (!p.alive) continue;
     const int ix = (int)p.x, iy = (int)p.y;
     if (ix >= x && ix < x+w && iy >= y && iy < y+h) {
-      safeClearRegion(p.px, p.py, p.sz, p.sz);
+      safeClearRegion(p.px, p.py, p.sz, p.sz, true);
       p.alive = false;
     }
   }
@@ -867,24 +1001,21 @@ static inline void animateMissileExplosion(int x,int y,int w,int h,uint16_t colo
   const uint32_t t0 = millis();
   while (millis() - t0 < 220) { updateParticles(); delay(12); }
   const int cx = x-8, cy = y-8, cw = w+16, ch = h+16;
-  safeClearRegion(cx, cy, cw, ch);
+  safeClearRegion(cx, cy, cw, ch, true);
   cleanupParticlesInRect(cx, cy, cw, ch);
 }
 
-// ---------- Frecce guida (solo icone, stessa riga, dentro schermo) ----------
+// ---------- Frecce guida ----------
 static inline void drawCornerHints() {
-  const int m = 14;     // margine laterale
-  const int h = 12;     // altezza freccia
-  const int w = 16;     // larghezza freccia
-  const int ay = SCREEN_H - m - h;  // baseline comune
+  const int m = 14;
+  const int h = 12;
+  const int w = 16;
+  const int ay = SCREEN_H - m - h;
 
-  // sinistra
   gfx->fillTriangle(m+w, ay,    m+w, ay+h,    m,    ay + h/2, COL_HINT);
-  // destra
   gfx->fillTriangle(SCREEN_W - m - w, ay,
                     SCREEN_W - m - w, ay+h,
                     SCREEN_W - m,     ay + h/2, COL_HINT);
-  // (TESTO RIMOSSO)
 }
 
 // ---------- Stato/Score/Palla ----------
@@ -910,12 +1041,13 @@ static inline void fullRedraw() {
   drawBricks(true);
   drawPaddleRounded(paddle);
   drawBallNow();
-  drawHUD_ifDirty();
+  drawHUD_force();           // assicura stato coerente subito
   drawCornerHints();
+  if (overlay.active) drawOverlayNow();
 }
 
 static inline void showCenteredMessage(const char *msg) {
-  drawCenteredMessageSized(msg, 2);
+  showOverlayCentered(msg, 2);
 }
 
 // ---------- Esplosione navicella ----------
@@ -924,7 +1056,7 @@ static inline void animatePaddleExplosion() {
   flashRect(paddle.x-2, paddle.y-2, paddle.w+4, paddle.h+4);
   const int cx = paddle.x + (paddle.w>>1);
   const int cy = paddle.y + (paddle.h>>1);
-  const int maxR = (paddle.w > 40 ? paddle.w : 40); // fix tipo
+  const int maxR = (paddle.w > 40 ? paddle.w : 40);
   for (int r = 6; r <= maxR; r += 6) {
     gfx->drawCircle(cx, cy, r, COL_YELLOW);
     gfx->drawCircle(cx, cy, r-2, COL_ORANGE);
@@ -938,7 +1070,7 @@ static inline void animatePaddleExplosion() {
   while (millis() - t0 < 420) { updateParticles(); delay(12); }
 
   const int cxr = paddle.x - 16, cyr = paddle.y - 16, cwr = paddle.w + 32, chr = paddle.h + 32;
-  safeClearRegion(cxr, cyr, cwr, chr);
+  safeClearRegion(cxr, cyr, cwr, chr, true);
   cleanupParticlesInRect(cxr, cyr, cwr, chr);
 }
 
@@ -949,7 +1081,6 @@ static inline void loseLifeAfterAnimation(int oldBX, int oldBY) {
   clearBallRegionExpanded((int)ball.x, (int)ball.y);
   clearPaddleSafeBand();
 
-  // respawn sempre dimensione standard
   paddleBuffActive = false;
   paddleSizeState  = PS_NORMAL;
 
@@ -1049,7 +1180,6 @@ void setup() {
   lives = 3; victory = false; gameOver = false; score = 0;
   gameOverDrawn = false;
 
-  // Stato iniziale navicella: dimensione standard
   paddleBuffActive = false;
   paddleSizeState  = PS_NORMAL;
   paddleBuffEndMs  = 0;
@@ -1061,11 +1191,13 @@ void setup() {
   pdownDrop.active = false;
   bonusBlinkToggle = false; bonusBlinkLastMs = 0;
 
+  overlay.active = false; overlay.text[0] = '\0';
+
   resetBallAndPaddle(true);
   fullRedraw();
 }
 
-// ---------- Gestione fasi palette (opzionale) ----------
+// ---------- Gestione fasi palette ----------
 static inline void stepPalettePhase(){
   if (palPhase == PAL_ORIG_FADE || palPhase == PAL_ALT_FADE) {
     if (palFadeCycles >= 2) {
@@ -1074,7 +1206,6 @@ static inline void stepPalettePhase(){
       palFadeCycles = 0;
     }
   } else {
-    // velocità transizione ridotta del 30% (10 -> 7)
     if (palXAlpha < 255) palXAlpha = (uint8_t)min(255, (int)palXAlpha + 7);
     else {
       if (palPhase == PAL_XFADE_TO_ALT) {
@@ -1097,29 +1228,26 @@ void loop() {
   if (now - lastFrame < (uint32_t)FRAME_INTERVAL_MS) return;
   lastFrame = now;
 
-  // INPUT prioritario per stati finali
   Quad q = readQuadrant();
 
-  // === Stato GAME OVER ===
   if (gameOver) {
     if (!gameOverDrawn) {
       drawGameOverHard();
       gameOverDrawn = true;
     }
     if (q != Q_NONE) {
-      // restart completo
       score = 0; lives = 3; victory = false; gameOver = false; gameOverDrawn = false;
       paddleBuffActive = false; paddleSizeState = PS_NORMAL; paddleBuffEndMs = 0;
       bonusDrop.active = false; pdownDrop.active = false;
       resetMissiles(); resetParticles(); initBricks();
       COL_PADDLE = COL_PADDLE_DEF; COL_PEND = COL_PEND_DEF;
+      overlay.active = false; overlay.text[0] = '\0';
       resetBallAndPaddle(true);
       fullRedraw();
     }
     return;
   }
 
-  // Hover/scintillio + conteggio cicli
   if (now - BRICK_HOVER_LAST >= BRICK_HOVER_STEP_MS){
     BRICK_HOVER_LAST = now;
     BRICK_HOVER_DELTA += BRICK_HOVER_DIR;
@@ -1132,7 +1260,7 @@ void loop() {
       BRICK_HOVER_DELTA = -BRICK_HOVER_MAX;
       BRICK_HOVER_DIR = +1;
       if (hoverHitTop) {
-        palFadeCycles++;     // un ciclo completo
+        palFadeCycles++;
         hoverHitTop = false;
       }
     }
@@ -1144,14 +1272,14 @@ void loop() {
   maybeUpdatePaddleBlinkFx();
   normalizePaddleWidth();
 
-  // Shuffle periodico ogni 40s
+  // Shuffle ogni 40s + messaggio per 2s
   if ((uint32_t)(now - lastShuffleMs) >= 40000) {
     lastShuffleMs = now;
     suddenShuffle();
-    shuffleMsgUntilMs = now + 2000; // 2s
+    shuffleMsgUntilMs = now + 2000;              // 2 secondi
+    showOverlayCentered("SUDDEN SHUFFLE", 2);    // appare al centro
   }
 
-  // ======= SPAWN TEMPORIZZATI PICKUP =======
   if (!anyPickupActive() && missilesActiveCount()==0) {
     if ((uint32_t)(now - lastBonusMs) >= BONUS_PERIOD_MS) {
       spawnBonus();
@@ -1163,8 +1291,10 @@ void loop() {
   }
 
   if (victory) {
+    if (!(overlay.active && strcmp(overlay.text, "VICTORY! - tap to restart") == 0)) {
+      showOverlayCentered("VICTORY! - tap to restart", 2);
+    }
     if (BRICK_NEED_REPAINT) { drawBricks(false); BRICK_NEED_REPAINT = false; }
-    showCenteredMessage("VICTORY! - tap to restart");
     drawHUD_ifDirty();
     drawCornerHints();
     if (q != Q_NONE) {
@@ -1173,6 +1303,7 @@ void loop() {
       bonusDrop.active = false; pdownDrop.active = false;
       resetMissiles(); resetParticles(); initBricks();
       COL_PADDLE = COL_PADDLE_DEF; COL_PEND = COL_PEND_DEF;
+      overlay.active = false; overlay.text[0] = '\0';
       resetBallAndPaddle(true);
       fullRedraw();
     }
@@ -1212,7 +1343,6 @@ void loop() {
       ball.vy = (ball.vy < 0 ? -spy : spy);
     }
 
-    // --- Collisione con mattoni (si rompe) ---
     bool brokeBrick = false;
     for (int i = 0; i < BRICK_ROWS * BRICK_COLS; ++i) {
       Brick &b = bricks[i];
@@ -1221,7 +1351,6 @@ void loop() {
         b.alive = false; bricksAlive--; score += 10;
         brickCrackSeed[i] = 0; brickHits[i] = 0;
 
-        // crepe sui vicini
         const int r = i / BRICK_COLS, c = i % BRICK_COLS;
         auto crackNeighbor = [&](int rr, int cc){
           if (rr<0 || rr>=BRICK_ROWS || cc<0 || cc>=BRICK_COLS) return;
@@ -1250,7 +1379,6 @@ void loop() {
       }
     }
 
-    // --- Colpito ma NON si rompe subito -> si crepa sempre ---
     if (!brokeBrick) {
       const int INF = 2;
       for (int i = 0; i < BRICK_ROWS * BRICK_COLS; ++i) {
@@ -1302,18 +1430,20 @@ void loop() {
 
     if (bricksAlive == 0) {
       victory = true;
-      clearAnyShuffleMessage();
-      showCenteredMessage("VICTORY! - tap to restart");
+      showOverlayCentered("VICTORY! - tap to restart", 2);
       drawHUD_ifDirty(); drawCornerHints();
       return;
     }
   }
 
-  // Power-up
+  // Power-up con traiettoria a S
   if (bonusDrop.active) {
     const int prevY = bonusDrop.y, prevX = bonusDrop.x;
+    clearBonusLast();
+
     bonusDrop.py = bonusDrop.y; bonusDrop.px = bonusDrop.x;
     bonusDrop.y += bonusDrop.vy;
+    bonusDrop.x = bonusDrop.baseX + (int)(bonusDrop.sAmp * sinf(bonusDrop.sOmega * bonusDrop.y + bonusDrop.sPhase));
 
     clearBonusTrailStrip(prevX, prevY, bonusDrop.y, bonusDrop.w, bonusDrop.h);
 
@@ -1329,11 +1459,14 @@ void loop() {
     }
   }
 
-  // Power-down
+  // Power-down con traiettoria a S
   if (pdownDrop.active) {
     const int prevY = pdownDrop.y, prevX = pdownDrop.x;
+    clearPowerDownLast();
+
     pdownDrop.py = pdownDrop.y; pdownDrop.px = pdownDrop.x;
     pdownDrop.y += pdownDrop.vy;
+    pdownDrop.x = pdownDrop.baseX + (int)(pdownDrop.sAmp * sinf(pdownDrop.sOmega * pdownDrop.y + pdownDrop.sPhase));
 
     clearBonusTrailStrip(prevX, prevY, pdownDrop.y, pdownDrop.w, pdownDrop.h);
 
@@ -1369,24 +1502,18 @@ void loop() {
     drawMissileNow(i);
   }
 
-  // Repaint hover/palette mattoni
+  // Repaint hover/palette
   if (BRICK_NEED_REPAINT) {
     drawBricks(false);
     BRICK_NEED_REPAINT = false;
+    if (overlay.active) drawOverlayNow();
   }
 
-  // Messaggio "SUDDEN SHUFFLE" 2s + pulizia
-  static bool shuffleMsgShown = false;
-  if (shuffleMsgUntilMs && now < shuffleMsgUntilMs) {
-    drawCenteredMessageSized("SUDDEN SHUFFLE", 2);
-    shuffleMsgShown = true;
-  } else if (shuffleMsgUntilMs && now >= shuffleMsgUntilMs) {
-    if (shuffleMsgShown) {
-      clearCenteredMessageSized("SUDDEN SHUFFLE", 2);
-      clearAnyShuffleMessage();
-      shuffleMsgShown = false;
+  // Messaggio "SUDDEN SHUFFLE" -> scade dopo 2s
+  if (shuffleMsgUntilMs) {
+    if (now >= shuffleMsgUntilMs) {
+      clearAnyShuffleMessage(); // usa hideOverlay() con fix anti-residui
     }
-    shuffleMsgUntilMs = 0;
   }
 
   // Layering finale
@@ -1394,11 +1521,14 @@ void loop() {
   if (oldPX != paddle.x || oldPY != paddle.y || oldPW != paddle.w) {
     clearPaddleRegionExpanded(oldPX, oldPY, oldPW, PADDLE_H);
     drawPaddleRounded(paddle);
+    if (overlay.active) drawOverlayNow();
   }
   if (oldBX != (int)ball.x || oldBY != (int)ball.y) {
     clearBallRegionExpanded(oldBX, oldBY);
     drawBallNow();
+    if (overlay.active) drawOverlayNow();
   }
   drawHUD_ifDirty();
   drawCornerHints();
+  if (overlay.active) drawOverlayNow();
 }
