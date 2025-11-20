@@ -100,7 +100,7 @@ The following Arduino IDE settings work for most of the projects in this reposit
 | **Upload Speed** | 921600 |
 | **USB Mode** | Hardware CDC and JTAG |
 
-> **Note:** install ESP32 support in the Arduino IDE through the Board Manager before compiling the sketches.
+> **Note:** install ESP32 support in the Arduino IDE through the Board Manager before compiling the sketches. Use **ESP32 version 2.0.16 or 2.0.17 by Espressif Systems** (not the Arduino ESP32 Boards package) and ensure the libraries **GFX Library for Arduino v1.6.0** and **TAMC_GT911 v1.0.2** are installed.
 
 ---
 
@@ -195,7 +195,7 @@ Le seguenti impostazioni nell'Arduino IDE funzionano per la maggior parte dei pr
 | **Upload Speed** | 921600 |
 | **USB Mode** | Hardware CDC and JTAG |
 
-> **Nota:** installare il supporto per ESP32 nell'Arduino IDE tramite il Board Manager prima di compilare gli sketch.
+> **Nota:** installare il supporto per ESP32 nell'Arduino IDE tramite il Board Manager prima di compilare gli sketch. Usare la **versione 2.0.16 o 2.0.17 di ESP32 by Espressif Systems** (non il pacchetto Arduino ESP32 Boards) e assicurarsi di avere le librerie **GFX Library for Arduino v1.6.0** e **TAMC_GT911 v1.0.2**.
 
 ---
 
