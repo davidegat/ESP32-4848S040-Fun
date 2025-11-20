@@ -41,7 +41,7 @@ static bool fetchQOD_OpenAI() {
   http.addHeader("Authorization", String("Bearer ") + g_oa_key);
 
   String prompt =
-    "Scrivi una breve frase in italiano sull'argomento: " + g_oa_topic + ". Rispondi solo con la frase, senza virgolette, senza spiegazioni. Non includere il nome dell'argomento nella risposta.";
+    "Scrivi una breve frase in stile " + g_oa_topic + " in italiano. Rispondi solo con la frase, senza virgolette, senza spiegazioni. Non includere il nome dell'argomento nella risposta.";
 
   // Modello: gpt-4.1-nano — reasoning disattivato
   String body =
@@ -86,14 +86,30 @@ static bool fetchQOD_OpenAI() {
   // Pulizia del testo
   //---------------------------------------------------------
 
+  // Decode unicode first
   String tmp = decodeJsonUnicode(text);
+
+  // Rimuove escape comuni
+  tmp.replace("\\n", " ");
   tmp.replace("\n", " ");
+  tmp.replace("\\r", " ");
   tmp.replace("\r", " ");
+  tmp.replace("\\t", " ");
+  tmp.replace("\t", " ");
+
+  tmp.replace("\\\"", "\"");
+  tmp.replace("\\'", "'");
+  tmp.replace("\\\\", "\\");
+
+  // Spazi doppi generati dalla pulizia
+  while (tmp.indexOf("  ") >= 0)
+    tmp.replace("  ", " ");
+
+  // Trim finale
   tmp.trim();
 
-  // solo ORA chiami sanitizeText:
+  // Ora sanitizziamo
   qod_text = sanitizeText(tmp);
-
 
   while (qod_text.startsWith("\"") || qod_text.startsWith("'") || qod_text.startsWith("“") || qod_text.startsWith("”"))
     qod_text.remove(0, 1), qod_text.trim();
@@ -165,8 +181,6 @@ static void handleForceQOD() {
            "<p><a href='/settings'>Torna indietro</a></p>"
            "</body>");
 }
-
-
 
 static void pageQOD() {
 
@@ -337,9 +351,10 @@ static void pageWeather() {
     y += CHAR_H * 2 + 4;
   }
 }
+
+
 /* ============================================================================
-   PAGINA: ARIA – COMPLETA E CORRETTA
-   (Tutte le funzioni necessarie realmente fuori da qualsiasi altra funzione)
+   PAGINA: ARIA 
 ============================================================================ */
 
 static float aq_pm25 = NAN, aq_pm10 = NAN, aq_o3 = NAN, aq_no2 = NAN;
@@ -855,7 +870,6 @@ static String formatCH(float v) {
   return s;
 }
 
-
 static String formatCHF(double v) {
   if (isnan(v)) return String("--.--");
   long long intPart = (long long)llround(floor(v));
@@ -880,6 +894,7 @@ static String formatCHF(double v) {
   snprintf(buf, sizeof(buf), "%02d", cents);
   return out + String(".") + String(buf);
 }
+
 static bool fetchBTC() {
   String url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=chf";
   String body;
@@ -948,7 +963,7 @@ static void pageBTC() {
 
   gfx->setTextSize(TEXT_SCALE);
 }
-// countdown
+
 /* ============================================================================
    PAGINA: COUNTDOWN
 ============================================================================ */
@@ -1093,7 +1108,6 @@ static void pageFX() {
   drawBoldMain(PAGE_X, y + CHAR_H, "JPY: " + String(fx_jpy, 1));
   y += CHAR_H * 2 + 4;
 }
-
 
 
 /* ============================================================================
