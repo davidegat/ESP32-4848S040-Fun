@@ -13,6 +13,9 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
 - **Gestione countdown** per fino a otto eventi futuri con titolo, data/ora e facoltativo promemoria anticipato.
 - **Widget quotazioni e citazioni** con conversione BTC/CHF via CoinGecko e frasi motivazionali giornaliere da ZenQuotes.
 - **Monitor di sistema** che mostra uptime, intensità retroilluminazione, Wi-Fi RSSI, consumo memoria e stato delle API.
+- **Grafico evoluzione temperatura** sui prossimi giorni basato sulle medie Open-Meteo, con interpolazione 24 slot.
+- **Ore di luce giornaliere** con orari di alba, tramonto e durata totale del giorno.
+- **Cambio rapido CHF** verso EUR/USD/GBP/JPY tramite API Frankfurter.
 - **Sincronizzazione oraria affidabile** con gestione automatica dell'ora legale, fallback a RTC interno e icona di stato.
 - **Interfaccia `/settings` integrata** per modificare al volo lingua, città di riferimento, URL ICS, elenco countdown, città trasporto e velocità rotazione.
 
@@ -55,6 +58,9 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
 - **Countdown**: aggiornati localmente ogni secondo; allo scadere viene mostrato un messaggio evidenziato.
 - **Trasporti**: interrogazione a `transport.opendata.ch` 2 minuti prima della scadenza della corsa corrente.
 - **Quote**: frasi ZenQuotes e BTC/CHF aggiornati ogni ora per ridurre il rate limit.
+- **Grafico temperatura**: medie giornaliere da Open-Meteo ricalcolate a ogni ciclo di refresh.
+- **Ore di luce**: alba/tramonto da Sunrise-Sunset aggiornati insieme al resto dei dati periodici.
+- **Cambio CHF**: tassi EUR/USD/GBP/JPY da Frankfurter su ogni refresh completo.
 
 ## Personalizzazione avanzata
 - Modificare colori, font e layout intervenendo sulle costanti `PALETTE_*` e sulle funzioni di rendering nel file `.ino`.
@@ -72,9 +78,12 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
 ## Fonti dati esterne
 - [wttr.in](https://wttr.in) per meteo e previsioni a breve termine.
 - [Open-Meteo AQI API](https://open-meteo.com) per indici di qualità dell'aria.
+- [Open-Meteo](https://open-meteo.com) per le temperature medie dei prossimi giorni.
 - [ZenQuotes API](https://zenquotes.io) per citazioni quotidiane.
 - [CoinGecko API](https://www.coingecko.com) per quotazioni BTC/CHF.
 - [transport.opendata.ch](https://transport.opendata.ch) per pianificazione dei trasporti pubblici svizzeri.
+- [Sunrise-Sunset.org](https://sunrise-sunset.org/api) per alba, tramonto e durata del giorno.
+- [Frankfurter.app](https://www.frankfurter.app) per i cambi CHF verso principali valute.
 - Eventuale calendario ICS privato o pubblico (Google Calendar, iCloud, Nextcloud, ecc.).
 
 Assicurarsi di rispettare i termini d'uso dei servizi e di impostare cache locale se l'uso è intensivo.
@@ -112,6 +121,9 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
 - **Countdown manager** supporting up to eight events with title, date/time, and optional early reminder.
 - **Quotes & rates** combining BTC/CHF conversion via CoinGecko and a daily motivational message from ZenQuotes.
 - **System monitor** reporting uptime, backlight intensity, Wi-Fi RSSI, memory usage, and API health indicators.
+- **Temperature trend chart** for the coming days using Open-Meteo daily means, interpolated across 24 slots.
+- **Daylight hours** page showing sunrise, sunset, and total light duration.
+- **Fast CHF exchange** page toward EUR/USD/GBP/JPY via the Frankfurter API.
 - **Robust timekeeping** with DST-aware NTP sync, on-device RTC fallback, and a visible status icon.
 - **Integrated `/settings` interface** to adjust language, weather location, ICS URL, countdown list, transport route, and page timing.
 
@@ -154,6 +166,9 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
 - **Countdowns**: updated locally every second; when an event expires the UI shows a highlighted message.
 - **Transport**: queries `transport.opendata.ch` two minutes before the current journey expires.
 - **Quotes & rates**: refreshed every hour to respect API rate limits.
+- **Temperature chart**: Open-Meteo daily means recalculated on every refresh cycle.
+- **Daylight**: sunrise/sunset from Sunrise-Sunset fetched alongside the periodic data refresh.
+- **CHF FX**: EUR/USD/GBP/JPY rates from Frankfurter on each full refresh.
 
 ## Advanced customization
 - Tweak colors, fonts, and layout via the `PALETTE_*` constants and drawing functions in the `.ino` file.
@@ -171,9 +186,12 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
 ## External data sources
 - [wttr.in](https://wttr.in) for weather and short-term forecasts.
 - [Open-Meteo AQI API](https://open-meteo.com) for air-quality indices.
+- [Open-Meteo](https://open-meteo.com) for upcoming-day temperature means.
 - [ZenQuotes API](https://zenquotes.io) for daily motivational quotes.
 - [CoinGecko API](https://www.coingecko.com) for BTC/CHF exchange rates.
 - [transport.opendata.ch](https://transport.opendata.ch) for Swiss public transport planning.
+- [Sunrise-Sunset.org](https://sunrise-sunset.org/api) for sunrise, sunset, and daylight duration.
+- [Frankfurter.app](https://www.frankfurter.app) for CHF exchange against major currencies.
 - Private or public ICS calendars (Google Calendar, iCloud, Nextcloud, etc.).
 
 Respect the external services' terms of use and consider caching if you plan heavy usage.
