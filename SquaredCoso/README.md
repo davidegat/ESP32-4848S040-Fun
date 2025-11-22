@@ -1,23 +1,23 @@
 # SquaredCoso
 
-SquaredCoso è un firmware per pannelli TFT 480×480 basati su ESP32-S3 che trasforma il modulo 4848S040 in una dashboard informativa sempre aggiornata. Il dispositivo alterna automaticamente pagine tematiche con meteo, orologio, trasporti, frasi motivazionali, stato di sistema e countdown personalizzati.
+SquaredCoso è un firmware per pannelli TFT 480×480 basati su ESP32-S3 che trasforma il modulo 4848S040 in una dashboard informativa sempre aggiornata. Il dispositivo alterna automaticamente pagine tematiche con meteo, orologio, notizie RSS, frasi motivazionali, finanza/FX, stato di sistema e countdown personalizzati.
 
 ## Panoramica del funzionamento
 Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione Wi-Fi e sincronizza l'orologio tramite NTP. Una volta ottenuta la rete, scarica ciclicamente i dati dalle API configurate, li normalizza e li presenta su pagine grafiche ottimizzate per la leggibilità a distanza. Ogni pagina rimane visibile per l'intervallo definito nelle impostazioni e viene aggiornata quando le sorgenti forniscono nuovi dati.
 
 ## Funzionalità principali
-- **Rotazione automatica delle pagine** con temi meteo, calendario ICS, countdown, traffico ferroviario e informazioni di sistema.
-- **Selezione pagine personalizzata** direttamente dall'interfaccia web per includere o escludere i widget dalla rotazione.
-- **Widget meteo e qualità dell'aria** con icone condensate, temperatura, percepita, precipitazioni e valori AQI suddivisi per inquinante.
-- **Pagina trasporti** con la prossima partenza dalla stazione di origine alla destinazione configurata, inclusi binario, ritardo e durata del viaggio.
+- **Rotazione automatica delle pagine** con temi meteo, qualità dell'aria, calendario ICS, countdown, notizie RSS e informazioni di sistema.
+- **Selezione pagine personalizzata** direttamente dall'interfaccia web per includere o escludere i widget dalla rotazione (persistente in NVS).
+- **Widget meteo e qualità dell'aria** con icone condensate, temperatura, percepita, precipitazioni e valori AQI suddivisi per inquinante, con geocoding automatico se lat/lon mancano.
 - **Gestione countdown** per fino a otto eventi futuri con titolo, data/ora e facoltativo promemoria anticipato.
-- **Widget quotazioni e citazioni** con conversione BTC/CHF via CoinGecko e frasi motivazionali giornaliere da ZenQuotes.
+- **Widget quotazioni e citazioni** con conversione BTC verso una valuta fiat a scelta via CoinGecko e frasi motivazionali giornaliere con priorità OpenAI (tema personalizzabile) e fallback ZenQuotes.
+- **Pagina notizie** che mostra i titoli delle ultime 5 notizie da un feed RSS configurabile.
 - **Monitor di sistema** che mostra uptime, intensità retroilluminazione, Wi-Fi RSSI, consumo memoria e stato delle API.
 - **Grafico evoluzione temperatura** sui prossimi giorni basato sulle medie Open-Meteo, con interpolazione 24 slot.
 - **Ore di luce giornaliere** con orari di alba, tramonto e durata totale del giorno.
-- **Cambio rapido CHF** verso EUR/USD/GBP/JPY tramite API Frankfurter.
+- **Cambio rapido** dalla valuta base scelta verso EUR/USD/GBP/JPY/CAD/CNY/INR tramite API Frankfurter, con confronto rispetto al refresh precedente.
 - **Sincronizzazione oraria affidabile** con gestione automatica dell'ora legale, fallback a RTC interno e icona di stato.
-- **Interfaccia `/settings` integrata** per modificare al volo lingua, città di riferimento, URL ICS, elenco countdown, città trasporto e velocità rotazione.
+- **Interfaccia `/settings` integrata** per modificare al volo lingua, città di riferimento, URL ICS, feed RSS, chiave/tema OpenAI, importo BTC, valuta fiat, elenco countdown e velocità rotazione.
 
 ## Preparazione dell'hardware
 - **Pannello**: modulo 4848S040 con driver ST7701, bus RGB a 16 bit e retroilluminazione PWM.
@@ -46,8 +46,10 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
    - **Lingua** (IT, EN, DE) per UI e testi statici.
    - **Località meteo** (supporta query wttr.in come `Milano` o `@45.46,9.19`).
    - **URL calendario ICS** per eventi quotidiani.
+   - **Feed RSS** per la pagina Notizie.
    - **Countdown** con nome, data ISO (`AAAA-MM-GGTHH:MM`), colore opzionale e icona.
-   - **Trasporti** con stazioni origine/destinazione, margine minuti e preferenza per trasporto pubblico.
+   - **Frase del giorno** con chiave OpenAI e argomento opzionale, oppure fallback ZenQuotes.
+   - **BTC posseduti** e **valuta fiat** per conversioni crypto/FX.
    - **Durata pagina** in secondi e luminosità predefinita.
 5. Salvare: il dispositivo riavvia il ciclo pagine applicando le nuove impostazioni.
 
@@ -56,11 +58,11 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
 - **Qualità dell'aria**: richiesta a Open-Meteo AQI ogni 30 minuti con fallback al valore precedente.
 - **Calendario ICS**: scaricato all'avvio e poi ogni ora; gli eventi passati vengono filtrati automaticamente.
 - **Countdown**: aggiornati localmente ogni secondo; allo scadere viene mostrato un messaggio evidenziato.
-- **Trasporti**: interrogazione a `transport.opendata.ch` 2 minuti prima della scadenza della corsa corrente.
-- **Quote**: frasi ZenQuotes e BTC/CHF aggiornati ogni ora per ridurre il rate limit.
+- **Notizie**: lettura del feed RSS configurato (default BBC) a ogni refresh completo.
+- **Quote**: frase del giorno richiesta a OpenAI (se configurato) o ZenQuotes e cambio BTC→fiat aggiornati ogni ora.
 - **Grafico temperatura**: medie giornaliere da Open-Meteo ricalcolate a ogni ciclo di refresh.
 - **Ore di luce**: alba/tramonto da Sunrise-Sunset aggiornati insieme al resto dei dati periodici.
-- **Cambio CHF**: tassi EUR/USD/GBP/JPY da Frankfurter su ogni refresh completo.
+- **Cambio FX**: tassi EUR/USD/GBP/JPY/CAD/CNY/INR via Frankfurter a ogni refresh completo.
 
 ## Personalizzazione avanzata
 - Modificare colori, font e layout intervenendo sulle costanti `PALETTE_*` e sulle funzioni di rendering nel file `.ino`.
@@ -80,11 +82,11 @@ Il firmware inizializza il display ST7701 in modalità RGB, avvia la connessione
 - [Open-Meteo AQI API](https://open-meteo.com) per indici di qualità dell'aria.
 - [Open-Meteo](https://open-meteo.com) per le temperature medie dei prossimi giorni.
 - [ZenQuotes API](https://zenquotes.io) per citazioni quotidiane.
-- [CoinGecko API](https://www.coingecko.com) per quotazioni BTC/CHF.
-- [transport.opendata.ch](https://transport.opendata.ch) per pianificazione dei trasporti pubblici svizzeri.
+- [CoinGecko API](https://www.coingecko.com) per quotazioni BTC verso la valuta fiat scelta.
 - [Sunrise-Sunset.org](https://sunrise-sunset.org/api) per alba, tramonto e durata del giorno.
-- [Frankfurter.app](https://www.frankfurter.app) per i cambi CHF verso principali valute.
+- [Frankfurter.app](https://www.frankfurter.app) per i cambi tra la valuta base scelta e le principali valute supportate.
 - Eventuale calendario ICS privato o pubblico (Google Calendar, iCloud, Nextcloud, ecc.).
+- Feed RSS a scelta (di default BBC News) per la pagina Notizie.
 
 Assicurarsi di rispettare i termini d'uso dei servizi e di impostare cache locale se l'uso è intensivo.
 
@@ -108,24 +110,24 @@ Il progetto è distribuito con licenza Creative Commons Attribuzione-Non Commerc
 
 # SquaredCoso (English)
 
-SquaredCoso is firmware for 480×480 RGB TFT panels driven by an ESP32-S3. It turns the 4848S040 module into a self-updating information kiosk that rotates through themed pages featuring weather, clocks, transport data, motivational quotes, system health, and custom countdowns.
+SquaredCoso is firmware for 480×480 RGB TFT panels driven by an ESP32-S3. It turns the 4848S040 module into a self-updating information kiosk that rotates through themed pages featuring weather, RSS news, clocks, motivational quotes, finance/FX, system health, and custom countdowns.
 
 ## How it works
 The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchronizes time via NTP. Once online it polls the configured APIs on a schedule, sanitizes the received data, and renders polished pages optimized for distance readability. Each page stays on screen for the configured interval and refreshes whenever new data is available.
 
 ## Core features
-- **Automatic page rotation** covering weather, ICS calendar, countdowns, Swiss transport departures, and system diagnostics.
-- **Custom page selection** straight from the web interface to include or exclude widgets from the rotation.
-- **Weather & air-quality widgets** with compact icons, temperature, feels-like data, precipitation, and pollutant-specific AQI.
-- **Transport page** with the next departure from the origin station to the destination, including platform, delay, and travel time.
+- **Automatic page rotation** covering weather, air quality, ICS calendar, countdowns, RSS headlines, and system diagnostics.
+- **Custom page selection** straight from the web interface to include or exclude widgets from the rotation (persisted to NVS).
+- **Weather & air-quality widgets** with compact icons, temperature, feels-like data, precipitation, and pollutant-specific AQI, plus automatic geocoding when lat/lon are missing.
 - **Countdown manager** supporting up to eight events with title, date/time, and optional early reminder.
-- **Quotes & rates** combining BTC/CHF conversion via CoinGecko and a daily motivational message from ZenQuotes.
+- **Quotes & rates** combining BTC conversion into your chosen fiat via CoinGecko and a daily motivational message prioritized from OpenAI (custom topic) with ZenQuotes fallback.
+- **News page** listing the five latest headlines from a configurable RSS feed.
 - **System monitor** reporting uptime, backlight intensity, Wi-Fi RSSI, memory usage, and API health indicators.
 - **Temperature trend chart** for the coming days using Open-Meteo daily means, interpolated across 24 slots.
 - **Daylight hours** page showing sunrise, sunset, and total light duration.
-- **Fast CHF exchange** page toward EUR/USD/GBP/JPY via the Frankfurter API.
+- **Fast FX page** converting from the chosen base currency toward EUR/USD/GBP/JPY/CAD/CNY/INR via Frankfurter, with comparison to the previous refresh.
 - **Robust timekeeping** with DST-aware NTP sync, on-device RTC fallback, and a visible status icon.
-- **Integrated `/settings` interface** to adjust language, weather location, ICS URL, countdown list, transport route, and page timing.
+- **Integrated `/settings` interface** to adjust language, weather location, ICS URL, RSS feed, OpenAI key/topic, BTC amount, fiat currency, countdown list, and page timing.
 
 ## Hardware preparation
 - **Display**: 4848S040 module (ST7701 driver, 16-bit RGB bus, PWM backlight).
@@ -154,8 +156,10 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
    - **Language** (IT, EN, DE) for UI strings.
    - **Weather location** (wttr.in queries such as `Milan` or `@45.46,9.19`).
    - **ICS calendar URL** for daily events.
+   - **RSS feed** powering the News page.
    - **Countdowns** with title, ISO date (`YYYY-MM-DDTHH:MM`), optional color, and icon.
-   - **Transport** origin/destination stations, grace period in minutes, and public transport preference.
+   - **Quote of the Day** with optional OpenAI key/topic, otherwise ZenQuotes fallback.
+   - **Owned BTC** amount and **fiat currency** for crypto/FX conversions.
    - **Page duration** in seconds and default brightness.
 5. Save to restart the page cycle with the new settings applied.
 
@@ -164,11 +168,11 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
 - **Air quality**: polled from Open-Meteo AQI every 30 minutes with graceful fallback.
 - **ICS calendar**: downloaded at boot and then hourly; past events are filtered automatically.
 - **Countdowns**: updated locally every second; when an event expires the UI shows a highlighted message.
-- **Transport**: queries `transport.opendata.ch` two minutes before the current journey expires.
-- **Quotes & rates**: refreshed every hour to respect API rate limits.
+- **News**: pulls the configured RSS feed (BBC by default) on each full refresh.
+- **Quotes & rates**: Quote of the Day from OpenAI (when configured) or ZenQuotes plus BTC→fiat conversion refreshed hourly.
 - **Temperature chart**: Open-Meteo daily means recalculated on every refresh cycle.
 - **Daylight**: sunrise/sunset from Sunrise-Sunset fetched alongside the periodic data refresh.
-- **CHF FX**: EUR/USD/GBP/JPY rates from Frankfurter on each full refresh.
+- **FX**: EUR/USD/GBP/JPY/CAD/CNY/INR rates from Frankfurter on each full refresh.
 
 ## Advanced customization
 - Tweak colors, fonts, and layout via the `PALETTE_*` constants and drawing functions in the `.ino` file.
@@ -188,11 +192,11 @@ The firmware boots the ST7701 display in RGB mode, connects to Wi-Fi, and synchr
 - [Open-Meteo AQI API](https://open-meteo.com) for air-quality indices.
 - [Open-Meteo](https://open-meteo.com) for upcoming-day temperature means.
 - [ZenQuotes API](https://zenquotes.io) for daily motivational quotes.
-- [CoinGecko API](https://www.coingecko.com) for BTC/CHF exchange rates.
-- [transport.opendata.ch](https://transport.opendata.ch) for Swiss public transport planning.
+- [CoinGecko API](https://www.coingecko.com) for BTC pricing against the selected fiat currency.
 - [Sunrise-Sunset.org](https://sunrise-sunset.org/api) for sunrise, sunset, and daylight duration.
-- [Frankfurter.app](https://www.frankfurter.app) for CHF exchange against major currencies.
+- [Frankfurter.app](https://www.frankfurter.app) for FX rates between the chosen base currency and major currencies.
 - Private or public ICS calendars (Google Calendar, iCloud, Nextcloud, etc.).
+- A custom RSS feed (BBC News by default) powering the News page.
 
 Respect the external services' terms of use and consider caching if you plan heavy usage.
 
