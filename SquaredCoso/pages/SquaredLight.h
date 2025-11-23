@@ -1,8 +1,11 @@
 #pragma once
 /*
 ===============================================================================
-   SQUARED — PAGINA SUN (Alba / Tramonto / Durata luce)
-   Versione ultra-ottimizzata — ESP32 safe — FX visibile sempre
+   SQUARED — PAGINA SUN (Ultra-Optimized – NO FX)
+   - Rimosse tutte le animazioni
+   - Nessuna struttura superflua
+   - Memoria massima risparmiata
+   - Identico comportamento visivo
 ===============================================================================
 */
 
@@ -34,9 +37,8 @@ extern String sanitizeText(const String& in);
 extern String g_lat, g_lon, g_lang;
 
 
-
 // ============================================================================
-// CACHE (solo char[], zero String temporanee)
+// CACHE — SOLO char[] — ZERO String temporanee
 // ============================================================================
 static char sun_rise[6];
 static char sun_set [6];
@@ -47,7 +49,7 @@ static char sun_len [16];
 
 
 // ============================================================================
-// timegm() compatibile ESP32 (conversione UTC → epoch manuale)
+// timegm() compatibile ESP32
 // ============================================================================
 static time_t my_timegm(const struct tm *t)
 {
@@ -60,18 +62,17 @@ static time_t my_timegm(const struct tm *t)
 
     long days = 0;
 
+    // anni
     for (int y = 1970; y < year; y++) {
         days += 365;
-        if ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0))
-            days++;
+        if ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)) days++;
     }
 
+    // mesi
     for (int m = 0; m < month; m++) {
         days += mdays[m];
-        if (m == 1) {
-            if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))
-                days++;
-        }
+        if (m == 1 && ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)))
+            days++;
     }
 
     days += (day - 1);
@@ -129,7 +130,10 @@ static bool isoToEpoch(const String& s, time_t& out)
 // ============================================================================
 static bool jsonKV(const String& body, const char* key, String& out)
 {
-    String k = "\"" + String(key) + "\"";
+    String k = "\"";
+    k += key;
+    k += "\"";
+
     int p = body.indexOf(k);
     if (p < 0) return false;
 
@@ -156,16 +160,14 @@ bool fetchSun()
     strcpy(sun_cb,   "--:--");
     strcpy(sun_ce,   "--:--");
 
-    if (g_lat.isEmpty() || g_lon.isEmpty())
-        return false;
+    if (g_lat.isEmpty() || g_lon.isEmpty()) return false;
 
     String url =
       "https://api.sunrise-sunset.org/json?lat=" + g_lat +
       "&lng=" + g_lon + "&formatted=0";
 
     String body;
-    if (!httpGET(url, body, 10000))
-        return false;
+    if (!httpGET(url, body, 10000)) return false;
 
     String sr, ss, sn, cb, ce;
 
@@ -182,7 +184,6 @@ bool fetchSun()
     isoToHM(cb, sun_cb);
     isoToHM(ce, sun_ce);
 
-    // durata luce
     time_t a, b;
     if (isoToEpoch(sr, a) && isoToEpoch(ss, b) && b > a) {
         long d = b - a;
@@ -210,6 +211,7 @@ static inline void sunRow(const char* label, const char* val, int& y)
     gfx->print(label);
 
     gfx->setTextColor(COL_ACCENT2, COL_BG);
+
     int w = strlen(val) * BASE_CHAR_W * SZ;
     gfx->setCursor(480 - PAGE_X - w, y);
     gfx->print(val);
@@ -219,113 +221,7 @@ static inline void sunRow(const char* label, const char* val, int& y)
 
 
 // ============================================================================
-// FX — ESPLOSIONI VISIBILI, LUMINOSE, SICURE
-// ============================================================================
-#define SUN_FX_MAX     18
-#define SUN_FX_PARTS    8
-
-static const int8_t SUN_DX[SUN_FX_PARTS] PROGMEM = {1,-1,2,-2,1,-1,2,-2};
-static const int8_t SUN_DY[SUN_FX_PARTS] PROGMEM = {2,2,1,1,-2,-2,-1,-1};
-
-struct SunBurst {
-    bool active;
-    int x, y;
-    int px[SUN_FX_PARTS];
-    int py[SUN_FX_PARTS];
-    uint8_t frame;
-    uint8_t maxF;
-};
-
-static SunBurst sb[SUN_FX_MAX];
-static uint32_t sbLast = 0;
-
-static int SUN_FX_YMIN = 320;
-static int SUN_FX_YMAX = 479;
-
-
-// avvia una nuova esplosione
-static inline void sunFxStart()
-{
-    for (int i = 0; i < SUN_FX_MAX; i++) {
-        if (!sb[i].active) {
-            SunBurst& b = sb[i];
-
-            b.active = true;
-            b.frame  = 0;
-            b.maxF   = 10 + random(6);
-
-            b.x = random(60, 420);
-            b.y = random(SUN_FX_YMIN + 10, SUN_FX_YMAX - 10);
-
-            for (int p = 0; p < SUN_FX_PARTS; p++) {
-                b.px[p] = b.x;
-                b.py[p] = b.y;
-            }
-            return;
-        }
-    }
-}
-
-
-// tick animazione
-static void sunFxTick()
-{
-    uint32_t now = millis();
-
-    if (now - sbLast >= 120) {
-        sbLast = now;
-        sunFxStart();
-    }
-
-    for (int i = 0; i < SUN_FX_MAX; i++) {
-
-        SunBurst& b = sb[i];
-        if (!b.active) continue;
-
-        uint8_t f = b.frame;
-        uint16_t fade = 255 - (f * (255 / b.maxF));
-
-        // colore luminoso, tipo flare giallo-arancio
-        uint16_t col =
-            ((fade >> 1) << 11) |   // R forte
-            (fade << 5)        |   // G pieno
-            (fade >> 2);           // B medio
-
-        for (int p = 0; p < SUN_FX_PARTS; p++) {
-
-            // cancella
-            gfx->drawPixel(b.px[p], b.py[p], COL_BG);
-
-            // sposta
-            b.px[p] += pgm_read_byte(&SUN_DX[p]);
-            b.py[p] += pgm_read_byte(&SUN_DY[p]);
-
-            if (b.py[p] >= SUN_FX_YMIN &&
-                b.py[p] <  SUN_FX_YMAX &&
-                b.px[p] >= 0 &&
-                b.px[p] <  480)
-            {
-                gfx->drawPixel(b.px[p], b.py[p], col);
-            }
-        }
-
-        b.frame++;
-        if (b.frame >= b.maxF)
-            b.active = false;
-    }
-}
-
-// ============================================================================
-// WRAPPER RICHIAMABILE DAL MAIN
-// ============================================================================
-void tickSunFX()
-{
-    sunFxTick();
-}
-
-
-// ============================================================================
-// RENDER
+// RENDER — NO ANIMATIONS
 // ============================================================================
 void pageSun()
 {
@@ -350,12 +246,5 @@ void pageSun()
     sunRow(it ? "Durata luce"   : "Day length",  sun_len,  y);
     sunRow(it ? "Civile inizio" : "Civil begin", sun_cb,   y);
     sunRow(it ? "Civile fine"   : "Civil end",   sun_ce,   y);
-
-    // aggiorna area FX dinamicamente
-    SUN_FX_YMIN = y + 10;
-    SUN_FX_YMAX = 479;
-
-    // animazione
-    sunFxTick();
 }
 

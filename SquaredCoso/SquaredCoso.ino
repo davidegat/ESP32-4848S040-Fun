@@ -1048,9 +1048,5 @@ void loop() {
   if (g_page == P_FX) {
     tickFXDataStream(COL_BG);
   }
-  if (g_page == P_SUN) {
-    tickSunFX();
-  }
-
   delay(5);
 }
