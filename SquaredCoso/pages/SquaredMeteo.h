@@ -1,22 +1,9 @@
 #pragma once
+
 /*
 ===============================================================================
-   SQUARED — PAGINA METEO (wttr.in JSON) +  PARALLASSE 3 LIVELLI
-
-   Effetti particelle:
-   --------------------
-   - 3 livelli: vicino / medio / lontano
-   - Ogni livello ha:
-       • velocità diversa
-       • ampiezza oscillazione diversa
-       • luminosità diversa
-   - Movimento:
-       • drift verticale continuo
-       • oscillazione sinusoidale
-       • flutter leggero orizzontale
-   - Overlay tipo sprite:
-       • cancellazione SOLO pixel precedenti
-       • MAI cancellare testo, icone, linee
+ SQUARED — METEO + PARTICELLE FULLSCREEN
+ Particelle lente ovunque, UI protetta SOLO dove necessario
 ===============================================================================
 */
 
@@ -24,17 +11,13 @@
 #include <Arduino_GFX_Library.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <math.h>
 #include "../handlers/globals.h"
 
-// ============================================================================
-// EXTERN
-// ============================================================================
+// === EXTERN ===
+extern Arduino_RGB_Display* gfx;
 extern const uint16_t COL_BG;
 extern const uint16_t COL_ACCENT1;
 extern const uint16_t COL_ACCENT2;
-
-extern Arduino_RGB_Display* gfx;
 
 extern const int PAGE_X;
 extern const int PAGE_Y;
@@ -49,401 +32,356 @@ extern int indexOfCI(const String& src, const String& key, int from);
 extern String g_city;
 extern String g_lang;
 
-// ============================================================================
-// ICONe
-// ============================================================================
+// === ICONS ===
 #include "../images/pioggia.h"
 #include "../images/sole.h"
 #include "../images/nuvole.h"
 
-// ============================================================================
-// ESTRAZIONE DATI METEO
-// ============================================================================
+// === DATI METEO ===
 static float  w_now_tempC = NAN;
 static String w_now_desc  = "";
 static String w_desc[3]   = { "", "", "" };
 
-// ============================================================================
-// PARTICELLE — MOTO CIRCOLARE (NO DRIFT VERTICALE/ORIZZONTALE INDIPENDENTE)
-// ============================================================================
 
-#define N_DUST 40   // più particelle
+// ============================================================================
+// UI MASK — versione RIDOTTA per far passare le particelle ovunque
+// ============================================================================
+static inline bool isUIpixel(int x, int y)
+{
+    // HEADER (sempre davanti)
+    if (y < PAGE_Y + 60)
+        return true;
+
+    // LINEA 1 (dopo temperatura grande)
+    if (y == PAGE_Y + 60)
+        return true;
+
+    // BLOCCO TESTO 3 GIORNI (solo testo, non le linee)
+    if (y >= PAGE_Y + 100 && y <= PAGE_Y + 120)
+        return true;
+
+    if (y >= PAGE_Y + 120 && y <= PAGE_Y + 240)
+        return true;
+
+    // LINEA 2 (tra giorno 1 e 2)
+    if (y == PAGE_Y + 175)
+        return true;
+
+    // LINEA 3 (tra giorno 2 e 3)
+    if (y == PAGE_Y + 244)
+        return true;
+
+    // TEMPERATURA GRANDE in basso a sinistra (non deve essere toccata)
+    if (x < 200 && y >= 360)
+        return true;
+
+    // ICONA meteo in basso a destra
+    const int PAD = 24;
+    int left  = 480 - PIOGGIA_WIDTH  - PAD - 4;
+    int top   = 480 - PIOGGIA_HEIGHT - PAD - 4;
+    if (x >= left && y >= top)
+        return true;
+
+    return false;
+}
+
+
+
+
+// ============================================================================
+// PARTICELLE — FULLSCREEN VERAMENTE
+// ============================================================================
+#define N_DUST   80
+#define ANG_RES  128
+#define ANG_MASK (ANG_RES - 1)
 
 struct Particle {
-  float baseX, baseY;   // centro del cerchio
-  float angle;          // angolo corrente
-  float speed;          // velocità angolare
-  float radius;         // raggio del cerchio
-
-  int16_t x, y;         // posizione attuale
-  int16_t oldX, oldY;   // posizione precedente
-  uint8_t bright;       // livelli luminosità
-  uint8_t layer;        // 0=far, 1=mid, 2=near
+    int16_t cx, cy;
+    int16_t x, y;
+    int16_t ox, oy;
+    uint8_t a, speed, r, layer;
 };
 
 static Particle dust[N_DUST];
 static bool dustInit = false;
-static uint32_t dustLastMs = 0;
-
+static uint32_t dustLast = 0;
 
 // ============================================================================
-// CONTROLLA SE UN PIXEL È UI (NON TOCCARE MAI)
-// Qui mascheriamo:
-//
-// - Header in alto
-// - Linea "temp + descrizione" subito sotto
-// - Colonna sinistra con giorni / descrizioni
-// - Temperatura  in basso a sinistra
-// - Icona meteo in basso a destra
+// LUT SENO / COSENO x32 — 128 valori precomputati, nessun file esterno
 // ============================================================================
-static inline bool isUIpixel(int x, int y)
+static const int8_t LUT_X[ANG_RES] PROGMEM = {
+    32,31,31,30,29,28,26,24,22,20,18,16,13,10, 7, 4,
+     2, -1, -4, -7, -9,-12,-14,-17,-19,-22,-24,-26,-28,-29,-30,-31,
+    -32,-31,-31,-30,-29,-28,-26,-24,-22,-20,-18,-16,-13,-10, -7, -4,
+    -2,  1,  4,  7,  9, 12, 14, 17, 19, 22, 24, 26, 28, 29, 30, 31,
+     32,31,31,30,29,28,26,24,22,20,18,16,13,10, 7, 4,
+     2, -1, -4, -7, -9,-12,-14,-17,-19,-22,-24,-26,-28,-29,-30,-31,
+    -32,-31,-31,-30,-29,-28,-26,-24,-22,-20,-18,-16,-13,-10, -7, -4,
+    -2,  1,  4,  7,  9, 12, 14, 17, 19, 22, 24, 26, 28, 29, 30, 31
+};
+
+static const int8_t LUT_Y[ANG_RES] PROGMEM = {
+     0, 2, 4, 7, 9,12,14,17,19,21,23,25,26,27,29,30,
+    31, 31,31,30,29,28,26,24,22,20,18,16,13,10, 7, 4,
+     2, 0,-2,-4,-7,-9,-12,-14,-17,-19,-21,-23,-25,-26,-27,-29,
+    -30,-31,-31,-31,-30,-29,-28,-26,-24,-22,-20,-18,-16,-13,-10,-7,
+    -4,-2, 0, 2, 4, 7, 9,12,14,17,19,21,23,25,26,27,
+    29,30,31,31,31,30,29,28,26,24,22,20,18,16,13,10,
+     7, 4, 2, 0,-2,-4,-7,-9,-12,-14,-17,-19,-21,-23,-25,-26,
+    -27,-29,-30,-31,-31,-31,-30,-29,-28,-26,-24,-22,-20,-18,-16,-13
+};
+
+
+// — colori —
+static const uint16_t dustCol[3] = {
+    0x7BEF,   // far
+    0xAD75,   // mid
+    0xFFFF    // near
+};
+
+static inline void initDust(int i)
 {
-  // 1) HEADER + linea principale meteo
-  //    Tutto quello sopra ~PAGE_Y+80 lo consideriamo UI sicura
-  if (y < PAGE_Y + 80) return true;
+    Particle &p = dust[i];
 
-  // 2) COLONNA TESTO SINISTRA (giorni + descrizioni)
-  //    Larghezza ~320 px, altezza fino a ~320 px
-  if (x >= PAGE_X && x < 320 && y >= PAGE_Y && y < 320)
-    return true;
+    p.cx = random(5, 475);
+    p.cy = random(5, 475);
 
-  // 3) TEMPERATURA GRANDE IN BASSO A SINISTRA
-  //    Nell'originale: setCursor(PAD, 480 - 90) con PAD=24
-  if (x >= 0 && x < 260 && y > 360)
-    return true;
+    p.layer = dust[i].layer;   // già assegnato
+    p.r = (p.layer == 0 ? 10+random(8) :
+           p.layer == 1 ? 16+random(12) :
+                           26+random(20));
 
-  // 4) ICONA METEO IN BASSO A DESTRA
-  //    La posizione finale è: ix = 480 - PIOGGIA_WIDTH - PAD;
-  //                           iy = 480 - PIOGGIA_HEIGHT - PAD;
-  const int PAD = 24;
-  const int iconMaxW = PIOGGIA_WIDTH;   // sono tutti simili, uso PIOGGIA come bounds
-  const int iconMaxH = PIOGGIA_HEIGHT;
+    p.a = random(ANG_RES);
+    p.speed = 1;  // lento
 
-  int iconLeft  = 480 - iconMaxW - PAD - 4;  // un piccolo margine extra
-  int iconTop   = 480 - iconMaxH - PAD - 4;
+    int8_t lx = pgm_read_byte(&LUT_X[p.a]);
+    int8_t ly = pgm_read_byte(&LUT_Y[p.a]);
 
-  if (x >= iconLeft && y >= iconTop)
-    return true;
+    p.x  = p.cx + ((lx * p.r) >> 5);
+    p.y  = p.cy + ((ly * p.r) >> 5);
 
-  // 5) LINEE ORIZZONTALI PRECISISSIME (di sicurezza)
-  int y1 = PAGE_Y + 60;
-  int y2 = PAGE_Y + 76;
-  int y3 = PAGE_Y + 131;
-  int y4 = PAGE_Y + 200;
-
-  if (y == y1 || y == y2 || y == y3 || y == y4)
-    return true;
-
-  return false;
+    p.ox = p.x;
+    p.oy = p.y;
 }
 
 
-
-// ============================================================================
-// INIT PARTICELLA — definisce un cerchio e un movimento circolare random
-// ============================================================================
-static void initDustParticle(int i)
+static void pageWeatherParticlesTick()
 {
-  uint8_t L = dust[i].layer;
+    uint32_t now = millis();
+    if (now - dustLast < 40) return;
+    dustLast = now;
 
-  // scegli un centro di orbita che NON sia nella UI
-  int tries = 0;
-  do {
-    dust[i].baseX = random(40, 440);
-    dust[i].baseY = random(PAGE_Y + 90, 440);  // parto già sotto l'header
-    tries++;
-    if (tries > 10) break;  // evita loop infiniti
-  } while (isUIpixel((int)dust[i].baseX, (int)dust[i].baseY));
+    if (!dustInit) {
+        dustInit = true;
+        for (int i = 0; i < N_DUST; i++) {
+            dust[i].layer = (i < 14 ? 0 : (i < 28 ? 1 : 2));
+            initDust(i);
+        }
+    }
 
-  // raggio del cerchio (più grande → moto circolare visibile)
-  if (L == 0)       dust[i].radius = 10 + random(0, 10);  // far
-  else if (L == 1)  dust[i].radius = 18 + random(0, 14);  // mid
-  else              dust[i].radius = 26 + random(0, 18);  // near
-
-  // angolo iniziale random
-  dust[i].angle = random(0, 628) / 100.0f;
-
-  // velocità angolare (più alta → giro ben percepibile)
-  if (L == 0)       dust[i].speed = 0.010f + random(0, 15) / 10000.0f;
-  else if (L == 1)  dust[i].speed = 0.018f + random(0, 18) / 10000.0f;
-  else              dust[i].speed = 0.026f + random(0, 24) / 10000.0f;
-
-  // luminosità per layer
-  dust[i].bright = (L == 0 ? 0 : (L == 1 ? 1 : 2));
-
-  // calcola posizioni iniziali
-  dust[i].x = dust[i].baseX + cosf(dust[i].angle) * dust[i].radius;
-  dust[i].y = dust[i].baseY + sinf(dust[i].angle) * dust[i].radius;
-  dust[i].oldX = dust[i].x;
-  dust[i].oldY = dust[i].y;
-}
-
-
-
-// ============================================================================
-// PARTICLE TICK — moto circolare, NO VERTICALE, NO DRIFT
-// ============================================================================
-void pageWeatherParticlesTick()
-{
-  uint32_t now = millis();
-  if (now - dustLastMs < 33) return;  // ~30 FPS
-  dustLastMs = now;
-
-  if (!dustInit) {
-    dustInit = true;
-
-    // assegna layer
     for (int i = 0; i < N_DUST; i++) {
-      if (i < 20)      dust[i].layer = 0;  // far
-      else if (i < 45) dust[i].layer = 1;  // mid
-      else             dust[i].layer = 2;  // near
 
-      initDustParticle(i);
+        Particle &p = dust[i];
+
+        // cancella pixel precedente se NON UI
+        if (!isUIpixel(p.ox, p.oy))
+            gfx->drawPixel(p.ox, p.oy, COL_BG);
+
+        p.a = (p.a + p.speed) & ANG_MASK;
+
+        int8_t lx = pgm_read_byte(&LUT_X[p.a]);
+        int8_t ly = pgm_read_byte(&LUT_Y[p.a]);
+
+        p.x = p.cx + ((lx * p.r) >> 5);
+        p.y = p.cy + ((ly * p.r) >> 5);
+
+        // reinizializza se entra nella UI
+        if (p.x < 0 || p.x >= 480 ||
+            p.y < 0 || p.y >= 480 ||
+            isUIpixel(p.x, p.y))
+        {
+            initDust(i);
+            continue;
+        }
+
+        gfx->drawPixel(p.x, p.y, dustCol[p.layer]);
+
+        p.ox = p.x;
+        p.oy = p.y;
     }
-  }
-
-  static const uint16_t col[3] = {
-    0xC618,
-    0xE71C,
-    0xFFFF
-  };
-
-  for (int i = 0; i < N_DUST; i++) {
-
-    // 1) CANCELLA PIXEL PRECEDENTE SOLO SE NON UI
-    if (!isUIpixel(dust[i].oldX, dust[i].oldY)) {
-      gfx->drawPixel(dust[i].oldX, dust[i].oldY, COL_BG);
-    }
-
-    // 2) AGGIORNA ANGOLO → MOTO CIRCOLARE
-    dust[i].angle += dust[i].speed;
-    if (dust[i].angle > 6.28318f)
-      dust[i].angle -= 6.28318f;
-
-    // nuova posizione sul cerchio
-    float nx = dust[i].baseX + cosf(dust[i].angle) * dust[i].radius;
-    float ny = dust[i].baseY + sinf(dust[i].angle) * dust[i].radius;
-
-    dust[i].x = (int16_t)nx;
-    dust[i].y = (int16_t)ny;
-
-    // se per qualche motivo orbita entra troppo in una zona piena di UI,
-    // rigenera completamente la particella
-    if (isUIpixel(dust[i].x, dust[i].y)) {
-      initDustParticle(i);
-      continue;
-    }
-
-    // 3) DISEGNA SOLO SE NON È UI
-    uint16_t c = col[dust[i].bright];
-    gfx->drawPixel(dust[i].x, dust[i].y, c);
-
-    // 4) SALVA POSIZIONE
-    dust[i].oldX = dust[i].x;
-    dust[i].oldY = dust[i].y;
-  }
 }
 
 
-
 // ============================================================================
-// JSON SIMPLE
+// JSON HELPERS
 // ============================================================================
 static bool jsonFindStringKV(const String& body,
                              const String& key,
                              int from,
                              String& outVal)
 {
-  int k = body.indexOf("\"" + key + "\"", from);
-  if (k < 0) return false;
+    int k = body.indexOf("\"" + key + "\"", from);
+    if (k < 0) return false;
 
-  int c = body.indexOf(':', k);
-  int q1 = body.indexOf('"', c + 1);
-  int q2 = body.indexOf('"', q1 + 1);
+    int c = body.indexOf(':', k);
+    int q1 = body.indexOf('"', c + 1);
+    int q2 = body.indexOf('"', q1 + 1);
+    if (c < 0 || q1 < 0 || q2 < 0) return false;
 
-  if (c < 0 || q1 < 0 || q2 < 0) return false;
-
-  outVal = body.substring(q1 + 1, q2);
-  return true;
+    outVal = body.substring(q1 + 1, q2);
+    return true;
 }
+
+
 
 // ============================================================================
 // TRADUZIONE
 // ============================================================================
-static String translateWeather(const String& s)
+static String translateWeather(String s)
 {
-  if (g_lang != "it") return s;
-  String t = s;
-  t.toLowerCase();
+    if (g_lang != "it") return s;
 
-  if (t.indexOf("sunny") >= 0) return "soleggiato";
-  if (t.indexOf("clear") >= 0) return "sereno";
-  if (t.indexOf("cloud") >= 0) return "nuvoloso";
-  if (t.indexOf("rain") >= 0) return "pioggia";
-  if (t.indexOf("snow") >= 0) return "neve";
-  if (t.indexOf("storm") >= 0) return "temporale";
-  if (t.indexOf("fog") >= 0) return "nebbia";
+    s.toLowerCase();
+    if (s.indexOf("sun") >= 0) return "soleggiato";
+    if (s.indexOf("clear")>=0) return "sereno";
+    if (s.indexOf("cloud")>=0) return "nuvoloso";
+    if (s.indexOf("rain")>=0) return "pioggia";
+    if (s.indexOf("snow")>=0) return "neve";
+    if (s.indexOf("storm")>=0) return "temporale";
+    if (s.indexOf("fog")>=0) return "nebbia";
 
-  return s;
-}
-
-// ============================================================================
-// GEO: ottiene lat/lon da Open-Meteo se mancano
-// ============================================================================
-bool geocodeIfNeeded() {
-
-  if (g_lat.length() && g_lon.length())
-    return true;
-
-  String url =
-    "https://geocoding-api.open-meteo.com/v1/search?count=1&format=json"
-    "&name=" + g_city +
-    "&language=" + g_lang;
-
-  String body;
-  if (!httpGET(url, body, 10000))
-    return false;
-
-  int p = indexOfCI(body, "\"latitude\"", 0);
-  if (p < 0) return false;
-  int c = body.indexOf(':', p);
-  int e = body.indexOf(',', c + 1);
-  g_lat = sanitizeText(body.substring(c + 1, e));
-
-  p = indexOfCI(body, "\"longitude\"", 0);
-  if (p < 0) return false;
-  c = body.indexOf(':', p);
-  e = body.indexOf(',', c + 1);
-  g_lon = sanitizeText(body.substring(c + 1, e));
-
-  if (!g_lat.length() || !g_lon.length())
-    return false;
-
-  saveAppConfig();
-  return true;
+    return s;
 }
 
 
+
 // ============================================================================
-// FETCH
+// FETCH METEO
 // ============================================================================
 bool fetchWeather()
 {
-  String url = "https://wttr.in/" + g_city + "?format=j1&lang=" + g_lang;
+    String url =
+        "https://wttr.in/" + g_city +
+        "?format=j1&lang=" + g_lang;
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient https;
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient https;
 
-  https.begin(client, url);
-  https.addHeader("User-Agent", "curl");
-  https.addHeader("Accept", "application/json");
+    https.begin(client, url);
+    https.addHeader("User-Agent", "curl");
+    https.addHeader("Accept", "application/json");
 
-  int code = https.GET();
-  if (code != 200) {
-    https.end();
-    return false;
-  }
-
-  String body = https.getString();
-  https.end();
-
-  // Meteo attuale -------------------------------------------------------
-  int cc = indexOfCI(body, "\"current_condition\"", 0);
-  if (cc >= 0) {
-    String t;
-    if (jsonFindStringKV(body, "temp_C", cc, t))
-      w_now_tempC = t.toFloat();
-
-    if (jsonFindStringKV(body, "value",
-                         indexOfCI(body, "\"weatherDesc\"", cc), 
-                         w_now_desc))
-      w_now_desc = translateWeather(sanitizeText(w_now_desc));
-  }
-
-  // Previsioni ----------------------------------------------------------
-  for (int i = 0; i < 3; i++) {
-    int pos = indexOfCI(body, "\"weatherDesc\"", cc + i * 40);
-    if (pos > 0) {
-      String v;
-      if (jsonFindStringKV(body, "value", pos, v))
-        w_desc[i] = translateWeather(sanitizeText(v));
+    int code = https.GET();
+    if (code != 200) {
+        https.end();
+        return false;
     }
-  }
 
-  return true;
+    String body = https.getString();
+    https.end();
+
+    int cc = indexOfCI(body, "\"current_condition\"", 0);
+    if (cc >= 0) {
+        String t;
+        if (jsonFindStringKV(body, "temp_C", cc, t))
+            w_now_tempC = t.toFloat();
+
+        if (jsonFindStringKV(body, "value",
+                             indexOfCI(body, "\"weatherDesc\"", cc),
+                             w_now_desc))
+        {
+            w_now_desc = translateWeather(sanitizeText(w_now_desc));
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        int pos = indexOfCI(body, "\"weatherDesc\"", cc + i * 60);
+        if (pos > 0) {
+            String v;
+            if (jsonFindStringKV(body, "value", pos, v))
+                w_desc[i] = translateWeather(sanitizeText(v));
+        }
+    }
+
+    return true;
 }
 
+
+
 // ============================================================================
-// ICONA
+// ICON PICKER
 // ============================================================================
-static int pickWeatherIcon(const String& d)
+static inline int pickWeatherIcon(const String& d)
 {
-  String s = d; s.toLowerCase();
-  if (s.indexOf("sun") >= 0 || s.indexOf("sole") >= 0) return 0;
-  if (s.indexOf("rain") >= 0 || s.indexOf("piogg") >= 0) return 2;
-  return 1;
+    String s = d; s.toLowerCase();
+    if (s.indexOf("sun")>=0 || s.indexOf("sole")>=0) return 0;
+    if (s.indexOf("rain")>=0 || s.indexOf("piogg")>=0) return 2;
+    return 1;
 }
+
+
 
 // ============================================================================
 // PAGE WEATHER
 // ============================================================================
 void pageWeather()
 {
-  drawHeader(g_lang == "it"
-               ? "Meteo per " + sanitizeText(g_city)
-               : "Weather in " + sanitizeText(g_city));
+    drawHeader(g_lang == "it"
+        ? "Meteo per " + sanitizeText(g_city)
+        : "Weather in " + sanitizeText(g_city));
 
-  int y = PAGE_Y;
+    int y = PAGE_Y;
 
-  String line =
-    (!isnan(w_now_tempC) && w_now_desc.length())
-    ? String((int)round(w_now_tempC)) + "c  " + w_now_desc
-    : (g_lang == "it" ? "Sto aggiornando..." : "Updating...");
+    String line =
+        (!isnan(w_now_tempC) && w_now_desc.length())
+        ? String((int)round(w_now_tempC)) + "c  " + w_now_desc
+        : (g_lang == "it" ? "Sto aggiornando..." : "Updating...");
 
-  drawBoldMain(PAGE_X, y + 20, line, 2);
-  y += 60;
+    drawBoldMain(PAGE_X, y + 20, line, 2);
+    y += 60;
 
-  drawHLine(y);
-  y += 16;
+    drawHLine(y);
+    y += 16;
 
-  static const char* it_days[3] = { "oggi", "domani", "fra 2 giorni" };
-  static const char* en_days[3] = { "today", "tomorrow", "in 2 days" };
+    static const char* it_days[3] = { "oggi", "domani", "fra 2 giorni" };
+    static const char* en_days[3] = { "today", "tomorrow", "in 2 days" };
 
-  for (int i = 0; i < 3; i++) {
-    gfx->setCursor(PAGE_X, y); gfx->setTextColor(COL_ACCENT1, COL_BG);
-    gfx->print(g_lang == "it" ? it_days[i] : en_days[i]);
+    for (int i = 0; i < 3; i++) {
+        gfx->setCursor(PAGE_X, y);
+        gfx->setTextColor(COL_ACCENT1, COL_BG);
+        gfx->print(g_lang == "it" ? it_days[i] : en_days[i]);
 
-    gfx->setCursor(PAGE_X, y + 20); gfx->setTextColor(COL_ACCENT2, COL_BG);
-    gfx->print(w_desc[i]);
+        gfx->setCursor(PAGE_X, y + 20);
+        gfx->setTextColor(COL_ACCENT2, COL_BG);
+        gfx->print(w_desc[i]);
 
-    y += 55;
-    if (i < 2) {
-      drawHLine(y);
-      y += 14;
+        y += 55;
+        if (i < 2) {
+            drawHLine(y);
+            y += 14;
+        }
     }
-  }
 
-  int type = pickWeatherIcon(w_now_desc);
-  int PAD = 24;
+    int type = pickWeatherIcon(w_now_desc);
+    int PAD = 24;
 
-  int ix = 480 - PIOGGIA_WIDTH - PAD;
-  int iy = 480 - PIOGGIA_HEIGHT - PAD;
+    int ix = 480 - PIOGGIA_WIDTH - PAD;
+    int iy = 480 - PIOGGIA_HEIGHT - PAD;
 
-  if (type == 0)
-    gfx->draw16bitRGBBitmap(ix, iy, (uint16_t*)sole_img, SOLE_WIDTH, SOLE_HEIGHT);
-  else if (type == 1)
-    gfx->draw16bitRGBBitmap(ix, iy, (uint16_t*)nuvole_img, NUVOLE_WIDTH, NUVOLE_HEIGHT);
-  else
-    gfx->draw16bitRGBBitmap(ix, iy, (uint16_t*)pioggia_img, PIOGGIA_WIDTH, PIOGGIA_HEIGHT);
+    if (type == 0)
+        gfx->draw16bitRGBBitmap(ix, iy, (uint16_t*)sole_img, SOLE_WIDTH, SOLE_HEIGHT);
+    else if (type == 1)
+        gfx->draw16bitRGBBitmap(ix, iy, (uint16_t*)nuvole_img, NUVOLE_WIDTH, NUVOLE_HEIGHT);
+    else
+        gfx->draw16bitRGBBitmap(ix, iy, (uint16_t*)pioggia_img, PIOGGIA_WIDTH, PIOGGIA_HEIGHT);
 
-  // temperatura grande
-  if (!isnan(w_now_tempC)) {
-    gfx->setTextColor(COL_ACCENT1, COL_BG);
-    gfx->setTextSize(9);
-    gfx->setCursor(PAD, 480 - 90);
-    gfx->print(String((int)round(w_now_tempC)) + "c");
-    gfx->setTextSize(2);
-  }
+    if (!isnan(w_now_tempC)) {
+        gfx->setTextColor(COL_ACCENT1, COL_BG);
+        gfx->setTextSize(9);
+        gfx->setCursor(PAD, 480 - 90);
+        gfx->print(String((int)round(w_now_tempC)) + "c");
+        gfx->setTextSize(2);
+    }
 }
 

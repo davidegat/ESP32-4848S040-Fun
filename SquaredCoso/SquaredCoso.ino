@@ -52,9 +52,19 @@ int indexOfCI(const String& src, const String& key, int from = 0);
 #include "images/SquaredCoso.h"
 #include "handlers/globals.h"
 #include "handlers/settingshandler.h"
+
 #include "pages/SquaredCount.h"
 #include "pages/SquaredCal.h"
 #include "pages/SquaredNews.h"
+#include "pages/SquaredClock.h"
+#include "pages/SquaredCrypto.h"
+#include "pages/SquaredLight.h"
+#include "pages/SquaredMeteo.h"
+#include "pages/SquaredCHF.h"
+
+#include "images/cosino.h"
+#include "images/cosino2.h"
+#include "images/cosino6.h"
 
 String g_rss_url = "https://feeds.bbci.co.uk/news/rss.xml";  // default
 
@@ -92,6 +102,44 @@ volatile bool g_dataRefreshPending = false;
 #define PWM_CHANNEL 0
 #define PWM_FREQ 1000
 #define PWM_BITS 8
+
+
+bool geocodeIfNeeded() {
+
+  // Se già esistono lat/lon → ok
+  if (g_lat.length() && g_lon.length())
+    return true;
+
+  String url =
+    "https://geocoding-api.open-meteo.com/v1/search?count=1&format=json"
+    "&name="
+    + g_city + "&language=" + g_lang;
+
+  String body;
+  if (!httpGET(url, body, 10000))
+    return false;
+
+  // latitude
+  int p = indexOfCI(body, "\"latitude\"", 0);
+  if (p < 0) return false;
+  int c = body.indexOf(':', p);
+  int e = body.indexOf(',', c + 1);
+  g_lat = sanitizeText(body.substring(c + 1, e));
+
+  // longitude
+  p = indexOfCI(body, "\"longitude\"", 0);
+  if (p < 0) return false;
+  c = body.indexOf(':', p);
+  e = body.indexOf(',', c + 1);
+  g_lon = sanitizeText(body.substring(c + 1, e));
+
+  if (!g_lat.length() || !g_lon.length())
+    return false;
+
+  saveAppConfig();
+  return true;
+}
+
 
 static void quickFadeOut() {
   const int maxDuty = (1 << PWM_BITS) - 1;
@@ -854,6 +902,52 @@ void setup() {
   fadeInUI();
 }
 
+// Ritorna un puntatore a una delle 6 immagini Cosino
+static const uint16_t* pickRandomCosino() {
+
+  int r = random(0, 3);  // 0..5
+
+  switch (r) {
+    case 0: return Cosino;
+    case 1: return cosino2;
+    case 2: return cosino6;
+  }
+  return Cosino;  // fallback
+}
+
+
+static void showCycleSplash(uint16_t ms = 1500) {
+
+  const uint16_t* img = pickRandomCosino();
+
+  gfx->fillScreen(RGB565_BLACK);
+
+  // 👉 cast forzato richiesto SOLO da Arduino_GFX
+  gfx->draw16bitRGBBitmap(
+    0,
+    0,
+    (uint16_t*)img,  // cast necessario, l’array è const nel .h
+    480,
+    480);
+
+  ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_BITS);
+  ledcAttachPin(GFX_BL, PWM_CHANNEL);
+
+  const int maxDuty = (1 << PWM_BITS) - 1;
+  const int steps = 500;
+  const int stepDelay = 5;
+
+  // fade-in immagine cosino random
+  for (int i = 0; i <= steps; i++) {
+    int duty = (maxDuty * i) / steps;
+    ledcWrite(PWM_CHANNEL, duty);
+    delay(stepDelay);
+  }
+
+  delay(ms);
+}
+
+
 
 
 void loop() {
@@ -890,7 +984,7 @@ void loop() {
   }
 
   if (millis() - lastPageSwitch >= PAGE_INTERVAL_MS) {
-    lastPageSwitch = millis();
+    //lastPageSwitch = millis();
 
     // fade-out veloce
     quickFadeOut();
@@ -906,11 +1000,11 @@ void loop() {
 
     if (g_cycleCompleted) {
       // =====================================================
-      //  🔁 SPLASH DI TRANSIZIONE A FINE CICLO
+      //  🔁 SPLASH DI TRANSIZIONE A FINE CICLO (COSINO)
       // =====================================================
 
-      // 1) Mostro lo splash (fade-in incluso)
-      showSplashFadeInOnly(1500);  // stessa funzione dello startup
+      // 1) Mostro splash Cosino
+      showCycleSplash(1500);
 
       // 2) Fade-out dello splash → schermo nero
       splashFadeOut();
@@ -922,11 +1016,12 @@ void loop() {
 
       g_cycleCompleted = false;
 
-      // 4) Disegno la prima pagina (ancora a BL=0)
+      // 4) Disegno la prima pagina (a BL=0)
       drawCurrentPage();
 
       // 5) Fade-in
       fadeInUI();
+      lastPageSwitch = millis();
 
       return;
     }
@@ -936,6 +1031,7 @@ void loop() {
 
     // fade-in veloce
     quickFadeIn();
+    lastPageSwitch = millis();
   }
 
   // aggiornamento continuo particelle meteo
@@ -951,6 +1047,9 @@ void loop() {
   // soldi
   if (g_page == P_FX) {
     tickFXDataStream(COL_BG);
+  }
+  if (g_page == P_SUN) {
+    tickSunFX();
   }
 
   delay(5);

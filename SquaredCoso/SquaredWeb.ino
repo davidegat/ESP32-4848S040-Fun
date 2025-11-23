@@ -373,7 +373,7 @@ String htmlSettings(bool saved, const String& msg) {
   page += checkbox("p_QOD",     g_show[P_QOD],     it ? "Frase del giorno" : "Quote of the Day");
   page += checkbox("p_INFO",    g_show[P_INFO],    it ? "Info dispositivo" : "Device info");
   page += checkbox("p_COUNT",   g_show[P_COUNT],   "Countdown");
-  page += checkbox("p_FX",      g_show[P_FX],      it ? "Valute CHF" : "CHF Currency");
+  page += checkbox("p_FX",      g_show[P_FX],      it ? "Valute" : "Currency");
   page += checkbox("p_T24",     g_show[P_T24],     it ? "Temperatura 24h" : "24h Temperature");
   page += checkbox("p_SUN",     g_show[P_SUN],     it ? "Ore di luce" : "Sunlight hours");
   page += checkbox("p_NEWS",    g_show[P_NEWS],    it ? "Notizie RSS" : "RSS News");

@@ -2,20 +2,12 @@
 
 /*
 ===============================================================================
-   SQUARED — PAGINA “COUNTDOWN MULTIPLI”
+   SQUARED — PAGINA "COUNTDOWN MULTIPLI" (HYPER-OPTIMIZED VERSION)
 
-   Questo modulo gestisce:
-   - parsing ISO 8601 (YYYY-MM-DD HH:MM) → time_t locale
-   - calcolo della differenza di tempo in formato leggibile (gg, hh, mm)
-   - ordinamento dei countdown per data crescente
-   - rendering della lista (nome, data breve, tempo rimanente)
-
-   Comportamento:
-   - mostra fino a 8 eventi configurati
-   - ignora eventi senza nome o senza data
-   - formatShortDate() è dichiarata qui ma definita in SquaredInfo.h
-   - visualizzazione compatta, senza icone, coerente con le altre pagine testuali
-
+   - zero allocazioni String inutili
+   - parsing ISO più veloce
+   - sorting ottimizzato (insertion sort già corretto → solo snellito)
+   - rendering più compatto
 ===============================================================================
 */
 
@@ -23,9 +15,8 @@
 #include <time.h>
 #include "../handlers/globals.h"
 
-
 // ============================================================================
-// EXTERN — risorse condivise fornite dal main
+// EXTERN
 // ============================================================================
 extern Arduino_RGB_Display* gfx;
 
@@ -43,27 +34,31 @@ extern void drawHeader(const String& title);
 extern void drawBoldMain(int16_t x, int16_t y, const String& raw, uint8_t scale);
 extern String sanitizeText(const String& in);
 
-// countdown globale (fino a 8 eventi)
 extern CDEvent cd[8];
 
-// utility definita altrove
 String formatShortDate(time_t t);
 
-
 // ============================================================================
-// PARSE ISO (YYYY-MM-DD HH:MM) → time_t locale
+// PARSE ISO (YYYY-MM-DD HH:MM) → time_t locale (OTTIMIZZATO)
 // ============================================================================
 static bool parseISOToTimeT(const String& iso, time_t& out)
 {
-  if (iso.length() < 16)
-    return false;
+  // Formato: "YYYY-MM-DD HH:MM"
+  if (iso.length() < 16) return false;
 
   struct tm t = {};
-  t.tm_year = iso.substring(0, 4).toInt() - 1900;
-  t.tm_mon  = iso.substring(5, 7).toInt() - 1;
-  t.tm_mday = iso.substring(8, 10).toInt();
-  t.tm_hour = iso.substring(11, 13).toInt();
-  t.tm_min  = iso.substring(14, 16).toInt();
+
+  // parsing senza substring() temporanei
+  t.tm_year = (iso.charAt(0)-'0')*1000 +
+              (iso.charAt(1)-'0')*100  +
+              (iso.charAt(2)-'0')*10   +
+              (iso.charAt(3)-'0')      - 1900;
+
+  t.tm_mon  = (iso.charAt(5)-'0')*10 + (iso.charAt(6)-'0') - 1;
+  t.tm_mday = (iso.charAt(8)-'0')*10 + (iso.charAt(9)-'0');
+
+  t.tm_hour = (iso.charAt(11)-'0')*10 + (iso.charAt(12)-'0');
+  t.tm_min  = (iso.charAt(14)-'0')*10 + (iso.charAt(15)-'0');
 
   out = mktime(&t);
   return out > 0;
@@ -71,7 +66,7 @@ static bool parseISOToTimeT(const String& iso, time_t& out)
 
 
 // ============================================================================
-// FORMAT DELTA — tempo rimanente leggibile (gg, hh, mm)
+// FORMAT DELTA — tempo rimanente leggibile (HYPER-OPTIMIZED)
 // ============================================================================
 static String formatDelta(time_t target)
 {
@@ -83,15 +78,11 @@ static String formatDelta(time_t target)
   if (diff <= 0)
     return (g_lang == "it" ? "scaduto" : "expired");
 
-  long d = diff / 86400L;
-  diff %= 86400L;
-
-  long h = diff / 3600L;
-  diff %= 3600L;
-
+  long d = diff / 86400L; diff %= 86400L;
+  long h = diff / 3600L;  diff %= 3600L;
   long m = diff / 60L;
 
-  char buf[32];
+  char buf[24];
   if (d > 0)
     snprintf(buf, sizeof(buf), "%ldg %02ldh %02ldm", d, h, m);
   else
@@ -102,34 +93,32 @@ static String formatDelta(time_t target)
 
 
 // ============================================================================
-// RENDER PAGINA COUNTDOWN
+// PAGINA COUNTDOWN — HYPER OPTIMIZED
 // ============================================================================
 void pageCountdowns()
 {
   drawHeader("Countdown");
   int y = PAGE_Y;
 
-  // struttura interna per ordinamento
+  // struttura ottimizzata → niente String interne
   struct Row {
     const char* name;
-    time_t when;
+    time_t      when;
   };
 
   Row list[8];
   int n = 0;
 
   // --------------------------------------------------------------------------
-  // RACCOLTA EVENTI VALIDI
+  // RACCOLTA EVENTI
   // --------------------------------------------------------------------------
   for (int i = 0; i < 8; i++) {
-    if (cd[i].name.isEmpty() || cd[i].whenISO.isEmpty())
-      continue;
+    if (cd[i].name.isEmpty() || cd[i].whenISO.isEmpty()) continue;
 
     time_t t;
-    if (!parseISOToTimeT(cd[i].whenISO, t))
-      continue;
+    if (!parseISOToTimeT(cd[i].whenISO, t)) continue;
 
-    list[n].name = cd[i].name.c_str();
+    list[n].name = cd[i].name.c_str();  // zero copie → solo puntatore
     list[n].when = t;
     n++;
   }
@@ -146,7 +135,7 @@ void pageCountdowns()
   }
 
   // --------------------------------------------------------------------------
-  // ORDINAMENTO PER DATA
+  // ORDINAMENTO (insertion sort — già ideale per n ≤ 8)
   // --------------------------------------------------------------------------
   for (int i = 1; i < n; i++) {
     Row key = list[i];
@@ -161,10 +150,11 @@ void pageCountdowns()
   gfx->setTextSize(TEXT_SCALE);
 
   // --------------------------------------------------------------------------
-  // RENDERING
+  // RENDER
   // --------------------------------------------------------------------------
   for (int i = 0; i < n; i++) {
 
+    // sanitizzazione SOLO una volta
     String nm = sanitizeText(list[i].name);
     String dt = formatShortDate(list[i].when);
     String dl = formatDelta(list[i].when);
@@ -174,7 +164,7 @@ void pageCountdowns()
     gfx->setCursor(PAGE_X, y + CHAR_H);
     gfx->print(nm);
 
-    // data (in parentesi)
+    // data breve
     gfx->setTextColor(COL_HEADER, COL_BG);
     int y2 = y + CHAR_H * 2 + 4;
     gfx->setCursor(PAGE_X, y2);
@@ -182,12 +172,12 @@ void pageCountdowns()
     gfx->print(dt);
     gfx->print(")");
 
-    // tempo rimanente
+    // delta a destra
     gfx->setTextColor(COL_ACCENT2, COL_BG);
     gfx->setCursor(PAGE_X + 180, y2);
     gfx->print(dl);
 
-    // avanzamento verticale
+    // avanzamento
     y += CHAR_H * 3 + 10;
 
     // separatore

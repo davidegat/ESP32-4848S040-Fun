@@ -3,204 +3,221 @@
 #include <Arduino.h>
 #include "../handlers/globals.h"
 
-// ============================================================================
-//  MODULO: VALUTE (Frankfurter API) + ANIMAZIONE SOLDI ROTANTI
-// ============================================================================
+/*
+===============================================================================
+   SQUARED — MODULO FX (Valute + Money Rain) — Versione definitiva
 
-// ======================
-// EXTERN DAL MAIN
-// ======================
+   - Spawn PERFETTO: subito sotto header, a Y = 80.
+   - Movimento: discesa verticale + oscillazione sinusoidale + rotazione.
+   - Nessun accumulo sul fondo: quando il bordo inferiore supera AREA_Y_MAX,
+     la banconota NON viene disegnata e viene respawnata dall’alto.
+   - Clamp laterale usando il raggio (semi-diagonale) → non tocca mai i bordi.
+   - Ottimizzato per ESP32-S3: nessun alloc dinamico, nessuna String inutile.
+===============================================================================
+*/
+
+// ============================================================================
+// EXTERN
+// ============================================================================
 extern Arduino_RGB_Display* gfx;
 
 extern const uint16_t COL_BG;
-extern const uint16_t COL_HEADER;
 extern const uint16_t COL_TEXT;
-extern const uint16_t COL_GOOD;
-extern const uint16_t COL_BAD;
 
 extern const int PAGE_X;
 extern const int PAGE_Y;
-extern const int BASE_CHAR_W;
-extern const int BASE_CHAR_H;
 extern const int TEXT_SCALE;
 extern const int CHAR_H;
 
 extern String g_fiat;
 
-extern void drawHeader(const String& title);
+extern void   drawHeader(const String& title);
 extern String sanitizeText(const String&);
-extern bool httpGET(const String&, String&, uint32_t);
-
+extern bool   httpGET(const String&, String&, uint32_t);
 
 // ============================================================================
-// ============================= FX DATA ======================================
+// FX GLOBALS (valute)
 // ============================================================================
-double fx_eur = NAN, fx_usd = NAN, fx_gbp = NAN;
-double fx_jpy = NAN, fx_cad = NAN, fx_cny = NAN;
-double fx_inr = NAN, fx_chf = NAN;
+double fx_eur = NAN, fx_usd = NAN, fx_gbp = NAN, fx_jpy = NAN;
+double fx_cad = NAN, fx_cny = NAN, fx_inr = NAN, fx_chf = NAN;
 
 double fx_prev_eur = NAN, fx_prev_usd = NAN, fx_prev_gbp = NAN;
 double fx_prev_jpy = NAN, fx_prev_cad = NAN;
-double fx_prev_cny = NAN, fx_prev_inr = NAN;
-double fx_prev_chf = NAN;
-
+double fx_prev_cny = NAN, fx_prev_inr = NAN, fx_prev_chf = NAN;
 
 // ============================================================================
-// FORMATTORE
+// FORMATTER
 // ============================================================================
-static inline String fmtDouble(double v, unsigned int dec) {
-  char buf[32];
-  dtostrf(v, 0, dec, buf);
-  return String(buf);
+static inline const char* fmtDoubleBuf(double v, uint8_t dec, char* out)
+{
+  dtostrf(v, 0, dec, out);
+  return out;
 }
-
 
 // ============================================================================
 // PARSER JSON
 // ============================================================================
-static inline double getRate(const String& body, const char* code) {
-
-  char key[16];
+static double parseJsonRate(const char* b, const char* code)
+{
+  char key[12];
   snprintf(key, sizeof(key), "\"%s\":", code);
 
-  int p = body.indexOf(key);
-  if (p < 0) return NAN;
+  const char* p = strstr(b, key);
+  if (!p) return NAN;
+  p += strlen(key);
 
-  int s = p + strlen(key);
-  int e = s;
-  const int L = body.length();
+  bool neg = false;
+  if (*p == '-') { neg = true; p++; }
 
-  while (e < L) {
-    char c = body[e];
-    if (!(c == '-' || c == '.' || (c >= '0' && c <= '9')))
-      break;
-    e++;
+  double val = 0;
+  while (*p >= '0' && *p <= '9') val = val * 10 + (*p++ - '0');
+
+  if (*p == '.') {
+    p++;
+    double frac = 0, div = 1;
+    while (*p >= '0' && *p <= '9') {
+      frac = frac * 10 + (*p++ - '0');
+      div *= 10;
+    }
+    val += frac / div;
   }
 
-  return body.substring(s, e).toDouble();
+  return neg ? -val : val;
 }
 
-
 // ============================================================================
-// FETCH FX  (PUBBLICA - NON STATIC !)
+// FETCH FX
 // ============================================================================
-bool fetchFX() {
-
-  if (g_fiat.length() == 0)
-    g_fiat = "CHF";
-
-  String url =
-    "https://api.frankfurter.app/latest?from=" +
-    g_fiat +
-    "&to=CHF,EUR,USD,GBP,JPY,CAD,CNY,INR";
+bool fetchFX()
+{
+  if (!g_fiat.length()) g_fiat = "CHF";
 
   String body;
-  if (!httpGET(url, body, 10000))
+  if (!httpGET(
+        "https://api.frankfurter.app/latest?from=" + g_fiat +
+        "&to=CHF,EUR,USD,GBP,JPY,CAD,CNY,INR",
+        body, 10000))
     return false;
 
-  fx_eur = getRate(body, "EUR");
-  fx_usd = getRate(body, "USD");
-  fx_gbp = getRate(body, "GBP");
-  fx_jpy = getRate(body, "JPY");
-  fx_cad = getRate(body, "CAD");
-  fx_cny = getRate(body, "CNY");
-  fx_inr = getRate(body, "INR");
-  fx_chf = getRate(body, "CHF");
+  const char* b = body.c_str();
+
+  fx_eur = parseJsonRate(b, "EUR");
+  fx_usd = parseJsonRate(b, "USD");
+  fx_gbp = parseJsonRate(b, "GBP");
+  fx_jpy = parseJsonRate(b, "JPY");
+  fx_cad = parseJsonRate(b, "CAD");
+  fx_cny = parseJsonRate(b, "CNY");
+  fx_inr = parseJsonRate(b, "INR");
+  fx_chf = parseJsonRate(b, "CHF");
 
   return true;
 }
 
-
-
 // ============================================================================
-// ===================== ANIMAZIONE SOLDI ROTANTI (NUOVA VERSIONE) ============
+// MONEY RAIN
 // ============================================================================
-// Soldi più larghi, area allargata fino a ~metà schermo (260–479),
-// nessuna collisione con i bordi e rotazione continua.
 
-#define MONEY_COUNT 28
+#define MONEY_COUNT  22
+
+// zona animazione (header termina a y = 80)
+#define AREA_X_MIN   260
+#define AREA_X_MAX   479
+#define AREA_Y_MIN   80
+#define AREA_Y_MAX   479
+
+#define SAFE_M       3
 
 struct MoneyDrop {
   float x, y;
   float vy;
-  float phase;
-  float amp;
-  float speed;
-  float rot;
-  float drot;
+  float phase, amp;
+  float rot, drot;
   uint8_t size;
   uint16_t color;
 };
 
 static MoneyDrop money[MONEY_COUNT];
-static bool moneyInit = false;
-static uint32_t moneyLast = 0;
+static bool      moneyInit = false;
+static uint32_t  moneyLast = 0;
 
-// area di animazione (rettangolo allargato)
-static const int FX_MIN_X = 260;  // prima era 320
-static const int FX_MAX_X = 479;
-
-static const uint16_t MONEY_COL[2] = {
-  0x07E0,
-  0x03E0
-};
+static const uint16_t MONEY_COL[2] = { 0x07E0, 0x03E0 };
 
 
-// ---------------------------------------------------------------------------
-// Rettangolo ruotato potente (più grande)
-// ---------------------------------------------------------------------------
-static void drawRotMoney(int cx, int cy, uint8_t s, float angle, uint16_t col)
+// ============================================================================
+// RAGGIO (semi-diagonale)
+// ============================================================================
+static inline int moneyRadius(uint8_t s)
 {
-  int w = 6 + s * 3;   // large = 12px di larghezza
-  int h = 10 + s * 4;  // large = 18px di altezza
+  const int w = 6 + s * 2;
+  const int h = 8 + s * 2;
+  float diag = sqrtf(float(w*w + h*h));
+  return int(diag * 0.5f) + SAFE_M;
+}
 
-  float c = cos(angle);
-  float si = sin(angle);
 
-  for (int dy = -h/2; dy <= h/2; dy++) {
-    for (int dx = -w/2; dx <= w/2; dx++) {
+// ============================================================================
+// DRAW MONEY
+// ============================================================================
+static inline void drawMoney(int cx, int cy, uint8_t s, float rot, uint16_t col)
+{
+  const int w  = 6 + s * 2;
+  const int h  = 8 + s * 2;
+  const int hw = w >> 1;
+  const int hh = h >> 1;
 
-      int rx = (int)(dx * c - dy * si);
-      int ry = (int)(dx * si + dy * c);
+  float cs = cosf(rot);
+  float sn = sinf(rot);
 
-      int px = cx + rx;
-      int py = cy + ry;
+  for (int dy = -hh; dy <= hh; dy++) {
 
-      if (py < PAGE_Y) continue; // NON toccare header
+    float ryx = dy * sn;
+    float ryy = dy * cs;
 
-      // solo dentro il rettangolo animazione
-      if (px >= FX_MIN_X && px <= FX_MAX_X && py >= PAGE_Y && py < 480)
-        gfx->drawPixel(px, py, col);
+    for (int dx = -hw; dx <= hw; dx++) {
+
+      int px = cx + int(dx * cs - ryx);
+      int py = cy + int(dx * sn + ryy);
+
+      if (px < AREA_X_MIN || px > AREA_X_MAX) continue;
+      if (py < AREA_Y_MIN || py > AREA_Y_MAX) continue;
+
+      gfx->drawPixel(px, py, col);
     }
   }
 }
 
 
-// ---------------------------------------------------------------------------
-// inizializza un soldo
-// ---------------------------------------------------------------------------
-static void initMoney(int i)
+// ============================================================================
+// INIT BANCONOTA — spawn correttamente sotto l’header (y=80)
+// ============================================================================
+static inline void moneyInitOne(int i)
 {
-  money[i].x = random(FX_MIN_X + 10, FX_MAX_X - 10);
-  money[i].y = random(-150, -20);
+  MoneyDrop &m = money[i];
 
-  money[i].vy = 1.6f + random(0, 25) / 10.0f;
+  m.size = uint8_t(random(0, 3));
+  int r  = moneyRadius(m.size);
 
-  money[i].amp   = 5 + random(0, 6);
-  money[i].speed = 0.013f + random(0, 20) / 500.0f;
-  money[i].phase = random(0, 628) / 100.0f;
+  // Spawn orizzontale libero
+  m.x = random(AREA_X_MIN + r, AREA_X_MAX - r);
 
-  money[i].rot  = random(0, 628) / 100.0f;
-  money[i].drot = 0.06f + random(0, 30) / 200.0f;
+  // Spawn verticale preciso: parte SOPRA l’area visibile
+  m.y = AREA_Y_MIN - random(40, 140) - r;
 
-  money[i].size  = random(0, 3);
-  money[i].color = MONEY_COL[random(0, 2)];
+  // Movimento
+  m.vy    = 1.2f + random(0, 14) * 0.08f;
+  m.amp   = 3 + random(0, 6);
+  m.phase = random(0, 628) * 0.01f;
+
+  m.rot  = random(0, 628) * 0.01f;
+  m.drot = 0.03f + random(0, 15) * 0.01f;
+
+  m.color = MONEY_COL[random(0, 2)];
 }
 
 
-// ---------------------------------------------------------------------------
-// tickFXDataStream – mantiene il nome originale
-// ---------------------------------------------------------------------------
+// ============================================================================
+// TICK ANIMAZIONE
+// ============================================================================
 void tickFXDataStream(uint16_t bg)
 {
   uint32_t now = millis();
@@ -210,59 +227,57 @@ void tickFXDataStream(uint16_t bg)
   if (!moneyInit) {
     moneyInit = true;
     for (int i = 0; i < MONEY_COUNT; i++)
-      initMoney(i);
+      moneyInitOne(i);
   }
 
-  for (int i = 0; i < MONEY_COUNT; i++)
-  {
-    // cancellazione
-    drawRotMoney((int)money[i].x, (int)money[i].y, money[i].size, money[i].rot, bg);
+  for (int i = 0; i < MONEY_COUNT; i++) {
 
-    // oscillazione laterale
-    money[i].phase += money[i].speed;
-    float dx = sin(money[i].phase * 6.28f) * money[i].amp;
+    MoneyDrop &m = money[i];
+    int r = moneyRadius(m.size);
 
-    money[i].y += money[i].vy;
-    money[i].rot += money[i].drot;
+    drawMoney(int(m.x), int(m.y), m.size, m.rot, bg);
 
-    float nx = money[i].x + dx;
-    float ny = money[i].y;
+    m.phase += 0.035f;
+    float dx = sinf(m.phase) * m.amp;
 
-    // -----------------------------------------------------
-    // EVITA collisioni con bordi del rettangolo
-    // -----------------------------------------------------
-    int margin = 8 + money[i].size * 2;  // margine per rettangoli grandi
+    m.y   += m.vy;
+    m.rot += m.drot;
 
-    if (nx < FX_MIN_X + margin) nx = FX_MIN_X + margin;
-    if (nx > FX_MAX_X - margin) nx = FX_MAX_X - margin;
+    float nx = m.x + dx;
+    float ny = m.y;
 
-    // -----------------------------------------------------
-    // reinizializza quando esce in basso
-    // -----------------------------------------------------
-    if (ny > 500) {
-      initMoney(i);
+    // oltre il fondo → respawn invisibile
+    if (ny - r > AREA_Y_MAX) {
+      moneyInitOne(i);
       continue;
     }
 
-    // nuovo disegno
-    drawRotMoney((int)nx, (int)ny, money[i].size, money[i].rot, money[i].color);
+    // clamp laterale
+    if (nx < AREA_X_MIN + r) nx = AREA_X_MIN + r;
+    if (nx > AREA_X_MAX - r) nx = AREA_X_MAX - r;
 
-    money[i].x = nx;
-    money[i].y = ny;
+    // non risalire sopra header
+    if (ny < AREA_Y_MIN - r) ny = AREA_Y_MIN - r;
+
+    drawMoney(int(nx), int(ny), m.size, m.rot, m.color);
+
+    m.x = nx;
+    m.y = ny;
   }
 }
 
 
-
-
 // ============================================================================
-// ============================ PAGE FX =======================================
+// PAGE FX
 // ============================================================================
-void pageFX() {
+void pageFX()
+{
+  drawHeader("Valute vs " + g_fiat);
 
-  String hdr = "Valute vs ";
-  hdr += g_fiat;
-  drawHeader(hdr);
+  gfx->fillRect(AREA_X_MIN, AREA_Y_MIN,
+                AREA_X_MAX - AREA_X_MIN + 1,
+                AREA_Y_MAX - AREA_Y_MIN + 1,
+                COL_BG);
 
   int y = PAGE_Y;
   const uint8_t scale = TEXT_SCALE + 1;
@@ -272,36 +287,25 @@ void pageFX() {
   const uint16_t COL_NEUT = COL_TEXT;
 
   gfx->setTextSize(scale);
+  char buf[32];
 
-  const char* labels[8] = {
-    "CHF:", "EUR:", "USD:", "GBP:", "JPY:", "CAD:", "CNY:", "INR:"
-  };
-
-  int maxLabelW = 0;
-  for (int i = 0; i < 8; i++) {
-    int w = strlen(labels[i]) * (6 * scale);
-    if (w > maxLabelW) maxLabelW = w;
-  }
-
-  const int valueX = PAGE_X + maxLabelW + 16;
-
-  auto printRow = [&](const char* lbl, double prevVal, double val, uint8_t decimals)
+  auto printRow = [&](const char* lbl, double prev, double val, uint8_t dec)
   {
     gfx->setCursor(PAGE_X, y + CHAR_H);
     gfx->setTextColor(COL_TEXT, COL_BG);
     gfx->print(lbl);
 
     uint16_t col = COL_NEUT;
-    if (!isnan(prevVal) && !isnan(val)) {
-      if (val > prevVal) col = COL_UP;
-      else if (val < prevVal) col = COL_DOWN;
+    if (!isnan(prev) && !isnan(val)) {
+      if (val > prev)      col = COL_UP;
+      else if (val < prev) col = COL_DOWN;
     }
 
-    gfx->setCursor(valueX, y + CHAR_H);
     gfx->setTextColor(col, COL_BG);
+    gfx->setCursor(PAGE_X + 70, y + CHAR_H);
 
     if (isnan(val)) gfx->print("--");
-    else gfx->print(fmtDouble(val, decimals));
+    else gfx->print(fmtDoubleBuf(val, dec, buf));
 
     y += CHAR_H * scale + 6;
   };
@@ -323,8 +327,5 @@ void pageFX() {
   fx_prev_cad = fx_cad;
   fx_prev_cny = fx_cny;
   fx_prev_inr = fx_inr;
-
-  // pulizia area animazione
-  gfx->fillRect(320, PAGE_Y, 160, 480 - PAGE_Y, COL_BG);
 }
 

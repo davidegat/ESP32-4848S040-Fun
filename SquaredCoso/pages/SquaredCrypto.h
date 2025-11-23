@@ -2,34 +2,26 @@
 
 /*
 ===============================================================================
-   SQUARED — PAGINA “CRYPTO – BITCOIN”
+   SQUARED — PAGINA “CRYPTO – BITCOIN” (HYPER-OPTIMIZED)
 
-   Questo modulo gestisce:
-   - fetching dei dati da CoinGecko (prezzo BTC e variazione 24h)
-   - parsing JSON minimale per estrarre solo i valori necessari
-   - formattazione numerica (CHF/EUR/USD) con separatori migliaia
-   - calcolo del valore totale dei BTC posseduti
-   - rendering su pannello con tre blocchi:
-       1) prezzo attuale BTC (grande, centrato)
-       2) variazione percentuale 24h (colorata: verde/rosso)
-       3) valore complessivo in fiat dei BTC posseduti
+   - Fetch da CoinGecko (prezzo BTC + variazione 24h)
+   - Parsing JSON minimale con scansione diretta del buffer
+   - Formattazione numerica fiat con separatori migliaia
+   - Calcolo valore totale BTC posseduti
+   - Rendering: prezzo grande, % 24h, valore totale
 
    NOTE:
-   - Non usa grafici, sparklines o frecce direzionali.
-   - Fetch leggero: una singola chiamata all’API semplice di CoinGecko.
-   - La valuta è definita da g_fiat (stringa configurabile via WebUI).
-   - g_btc_owned permette di mostrare il valore totale (opzionale).
-
-   Revisione commentata — 2025
+   - Nessun grafico / sparkline / frecce direzionali.
+   - Valuta definita da g_fiat (configurabile via WebUI).
+   - g_btc_owned opzionale.
 ===============================================================================
 */
 
 #include <Arduino.h>
 #include "../handlers/globals.h"
 
-
 // ============================================================================
-// EXTERN — risorse condivise fornite dal main
+// EXTERN — risorse condivise
 // ============================================================================
 extern Arduino_RGB_Display* gfx;
 
@@ -50,23 +42,21 @@ extern String g_fiat;
 extern double g_btc_owned;
 
 extern bool httpGET(const String& url, String& out, uint32_t timeout);
-extern int indexOfCI(const String& src, const String& key, int from);
+extern int  indexOfCI(const String& src, const String& key, int from);
 extern void drawHeader(const String& title);
 extern void drawHLine(int y);
 extern void drawBoldMain(int16_t x, int16_t y, const String& raw, uint8_t scale);
 
-
 // ============================================================================
-// STATO DEL MODULO CRYPTO
+// STATO MODULO CRYPTO
 // ============================================================================
-static double cr_price       = NAN;   // prezzo BTC in fiat
-static double cr_prev_price  = NAN;   // prezzo precedente (per differenziali futuri)
-static double cr_chg24       = NAN;   // % variazione 24h
+static double   cr_price          = NAN;   // prezzo BTC in fiat
+static double   cr_prev_price     = NAN;   // prezzo precedente
+static double   cr_chg24          = NAN;   // % variazione 24h
 static uint32_t cr_last_update_ms = 0;
 
-
 // ============================================================================
-// PARSER JSON MINIMALE — cerca un valore numerico "key" : NUMBER
+// PARSER JSON — cerca "key": NUMBER (leggero, senza substring())
 // ============================================================================
 static bool crFindNumberKV(const String& body,
                            const char* key,
@@ -76,38 +66,32 @@ static bool crFindNumberKV(const String& body,
   char kbuf[48];
   snprintf(kbuf, sizeof(kbuf), "\"%s\"", key);
 
-  int p = body.indexOf(kbuf, from);
-  if (p < 0) return false;
+  const char* base = body.c_str();
+  const char* start = base + from;
 
-  p = body.indexOf(':', p);
-  if (p < 0) return false;
+  const char* p = strstr(start, kbuf);
+  if (!p) return false;
 
-  int s = p + 1;
-  const int len = body.length();
+  // cerca ':'
+  const char* colon = strchr(p, ':');
+  if (!colon) return false;
 
-  // skip spazi
-  while (s < len && (body[s] == ' ' || body[s] == '\n' ||
-                     body[s] == '\r' || body[s] == '\t'))
-    s++;
+  const char* s = colon + 1;
 
-  int e = s;
-  while (e < len) {
-    char c = body[e];
-    if (c == ',' || c == '}' || c == ']' || c == ' ') break;
-    e++;
-  }
-  if (e <= s) return false;
+  // skip spazi e controlli vari
+  while (*s == ' ' || *s == '\n' || *s == '\r' || *s == '\t') s++;
 
-  outVal = body.substring(s, e).toDouble();
+  // strtod per numero (gestisce segno e punto decimale)
+  char* endptr = nullptr;
+  double val = strtod(s, &endptr);
+  if (endptr == s) return false;   // nessun numero valido
+
+  outVal = val;
   return true;
 }
 
-
 // ============================================================================
-// FORMATTER — cifra fiat con separatori migliaia
-// ============================================================================
-// ============================================================================
-// FORMATTER — cifra fiat con separatori migliaia (senza .00 finale)
+// FORMATTER — cifra fiat con separatori migliaia (senza .00 se non serve)
 // ============================================================================
 static String crFmtFiat(double v)
 {
@@ -117,19 +101,21 @@ static String crFmtFiat(double v)
   double f = v - (double)ip;
   if (f < 0) f = 0;
 
-  int cents = (int)(f * 100 + 0.5);
+  int cents = (int)(f * 100.0 + 0.5);
   if (cents >= 100) {
     ip++;
     cents -= 100;
   }
 
   // parte intera con separatori
-  char buf[48];
+  char buf[32];
   snprintf(buf, sizeof(buf), "%lld", ip);
   String sInt = buf;
 
   String out;
+  out.reserve(sInt.length() + 4);
   int cnt = 0;
+
   for (int i = sInt.length() - 1; i >= 0; --i) {
     out = sInt.charAt(i) + out;
     if (++cnt == 3 && i > 0) {
@@ -138,39 +124,35 @@ static String crFmtFiat(double v)
     }
   }
 
-  // 🔥 SE I CENTESIMI SONO ZERO → MOSTRA SOLO INTERO
-  if (cents == 0)
-    return out;
+  // centesimi zero → niente parte decimale
+  if (cents == 0) return out;
 
-  // altrimenti mostra i centesimi
   char cb[8];
   snprintf(cb, sizeof(cb), "%02d", cents);
   return out + "." + cb;
 }
 
-
-
 // ============================================================================
-// FORMATTER — valore BTC con 8 decimali
+// FORMATTER — valore BTC con 8 decimali (notazione europea)
 // ============================================================================
-static String crFmtBTC(double v) {
+static String crFmtBTC(double v)
+{
   if (isnan(v)) return "--";
   String s = String(v, 8);
-  s.replace('.', ',');  // notazione europea
+  s.replace('.', ',');
   return s;
 }
 
-
 // ============================================================================
-// FETCH DATA — CoinGecko API (semplice/leggera)
+// FETCH DATA — CoinGecko API
 // ============================================================================
 static bool fetchCrypto()
 {
-  if (g_fiat.length() == 0)
+  if (!g_fiat.length())
     g_fiat = "CHF";
 
   String fiat = g_fiat;
-  fiat.toLowerCase();
+  fiat.toLowerCase();  // chiave JSON in minuscolo
 
   String url =
     "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin"
@@ -181,31 +163,32 @@ static bool fetchCrypto()
   if (!httpGET(url, body, 10000))
     return false;
 
-  int b = indexOfCI(body, "\"bitcoin\"");
+  int b = indexOfCI(body, "\"bitcoin\"", 0);
   if (b < 0) return false;
 
+  // prezzo
   double price = NAN;
   if (!crFindNumberKV(body, fiat.c_str(), b, price))
     return false;
 
+  // variazione 24h
   double pct = NAN;
   {
     String k = fiat + "_24h_change";
-    crFindNumberKV(body, k.c_str(), b, pct);
+    (void)crFindNumberKV(body, k.c_str(), b, pct);  // se fallisce → pct = NAN
   }
 
   // aggiorna stato
-  cr_prev_price = cr_price;
-  cr_price = price;
-  cr_chg24 = pct;
-  cr_last_update_ms = millis();
+  cr_prev_price      = cr_price;
+  cr_price           = price;
+  cr_chg24           = pct;
+  cr_last_update_ms  = millis();
 
   return true;
 }
 
-
 // ============================================================================
-// RENDER — senza frecce, senza sparkline
+// RENDER — prezzo, % 24h, valore totale
 // ============================================================================
 static void pageCrypto()
 {
@@ -229,7 +212,6 @@ static void pageCrypto()
   gfx->setCursor((480 - tw) / 2, y + 70);
   gfx->print(sPrice);
 
-
   // --------------------------------------------------------------------------
   // BLOCCO 2 — variazione 24h
   // --------------------------------------------------------------------------
@@ -239,10 +221,10 @@ static void pageCrypto()
   uint16_t col = COL_TEXT;
 
   if (!isnan(cr_chg24)) {
-    char buf[32];
+    char buf[24];
     snprintf(buf, sizeof(buf), "%.2f%%", cr_chg24);
     s24 = buf;
-    col = (cr_chg24 >= 0) ? 0x0000 : 0x9000;
+    col = (cr_chg24 >= 0.0) ? 0x0000 : 0x9000;  // mantengo i tuoi colori custom
   }
 
   gfx->setTextColor(col, COL_BG);
@@ -250,9 +232,8 @@ static void pageCrypto()
   gfx->setCursor((480 - wtxt) / 2, y + 150);
   gfx->print(s24);
 
-
   // --------------------------------------------------------------------------
-  // BLOCCO 3 — valore totale dei BTC posseduti (se definito)
+  // BLOCCO 3 — valore totale BTC posseduti (se definito)
   // --------------------------------------------------------------------------
   if (!isnan(g_btc_owned) && !isnan(cr_price)) {
 
@@ -270,9 +251,8 @@ static void pageCrypto()
     gfx->print(L2);
   }
 
-
   // --------------------------------------------------------------------------
-  // FOOTER — aggiornamento (secondi fa)
+  // FOOTER — tempo dall’ultimo aggiornamento
   // --------------------------------------------------------------------------
   gfx->setTextSize(2);
   int fy = y + 340;
@@ -295,10 +275,9 @@ static void pageCrypto()
   gfx->setTextSize(TEXT_SCALE);
 }
 
-
 // ============================================================================
-// WRAPPERS — usati dal main per uniformità di naming
+// WRAPPERS — usati dal main
 // ============================================================================
 inline bool fetchCryptoWrapper() { return fetchCrypto(); }
-inline void pageCryptoWrapper() { pageCrypto(); }
+inline void pageCryptoWrapper()  { pageCrypto(); }
 

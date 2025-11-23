@@ -1,14 +1,8 @@
 #pragma once
-
 /*
 ===============================================================================
-   SQUARED — PAGINA “SUN” (Alba / Tramonto / Durata luce)
-
-   - Fetch da sunrise-sunset.org (ISO8601 UTC)
-   - Conversione ISO → HH:MM
-   - Calcolo LOCALE della durata della luce (tramonto - alba)
-   - Traduzione IT/EN
-   - Layout stile ARIA, tutto automatico
+   SQUARED — PAGINA SUN (Alba / Tramonto / Durata luce)
+   Versione ultra-ottimizzata — ESP32 safe — FX visibile sempre
 ===============================================================================
 */
 
@@ -16,13 +10,12 @@
 #include <time.h>
 #include "../handlers/globals.h"
 
-// ======================
-// EXTERN DAL MAIN
-// ======================
+// ---------------------------------------------------------------------------
+// EXTERN
+// ---------------------------------------------------------------------------
 extern Arduino_RGB_Display* gfx;
 
 extern const uint16_t COL_BG;
-extern const uint16_t COL_HEADER;
 extern const uint16_t COL_TEXT;
 extern const uint16_t COL_ACCENT1;
 extern const uint16_t COL_ACCENT2;
@@ -35,81 +28,96 @@ extern const int TEXT_SCALE;
 
 extern void drawHeader(const String& title);
 extern void drawBoldMain(int16_t x, int16_t y, const String& raw, uint8_t scale);
+extern bool httpGET(const String& url, String& body, uint32_t timeoutMs);
 extern String sanitizeText(const String& in);
 
-extern int indexOfCI(const String& src, const String& key, int from);
-extern bool httpGET(const String& url, String& body, uint32_t timeoutMs);
+extern String g_lat, g_lon, g_lang;
 
-extern String g_lat;
-extern String g_lon;
-extern String g_lang;
 
 
 // ============================================================================
-// PROTOTIPI
+// CACHE (solo char[], zero String temporanee)
 // ============================================================================
-bool fetchSun();
-void pageSun();
+static char sun_rise[6];
+static char sun_set [6];
+static char sun_noon[6];
+static char sun_cb  [6];
+static char sun_ce  [6];
+static char sun_len [16];
 
 
 // ============================================================================
-// CACHE LOCALE
+// timegm() compatibile ESP32 (conversione UTC → epoch manuale)
 // ============================================================================
-static String sun_rise = "";
-static String sun_set  = "";
-static String sun_noon = "";
-static String sun_len  = "";
-static String sun_civB = "";
-static String sun_civE = "";
+static time_t my_timegm(const struct tm *t)
+{
+    static const int mdays[12] =
+      {31,28,31,30,31,30,31,31,30,31,30,31};
+
+    int year  = t->tm_year + 1900;
+    int month = t->tm_mon;
+    int day   = t->tm_mday;
+
+    long days = 0;
+
+    for (int y = 1970; y < year; y++) {
+        days += 365;
+        if ((y % 4 == 0 && y % 100 != 0) || (y % 400 == 0))
+            days++;
+    }
+
+    for (int m = 0; m < month; m++) {
+        days += mdays[m];
+        if (m == 1) {
+            if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))
+                days++;
+        }
+    }
+
+    days += (day - 1);
+
+    return (time_t)(
+         days       * 86400L +
+         t->tm_hour * 3600L +
+         t->tm_min  * 60L +
+         t->tm_sec
+    );
+}
 
 
 // ============================================================================
-// ESTRAE HH:MM da un timestamp ISO8601
+// ISO → HH:MM
 // ============================================================================
-static inline String isoToHM(const String& iso) {
+static inline void isoToHM(const String& iso, char out[6])
+{
     int t = iso.indexOf('T');
-    if (t < 0 || t + 5 >= iso.length()) return "--:--";
-    return iso.substring(t + 1, t + 6);
+    if (t < 0 || t + 5 >= iso.length()) {
+        strcpy(out, "--:--");
+        return;
+    }
+    out[0] = iso[t+1];
+    out[1] = iso[t+2];
+    out[2] = ':';
+    out[3] = iso[t+4];
+    out[4] = iso[t+5];
+    out[5] = 0;
 }
 
 
 // ============================================================================
-// my_timegm() — implementazione locale di timegm() per ESP32
+// ISO8601 → epoch UTC
 // ============================================================================
-static time_t my_timegm(struct tm* t)
+static bool isoToEpoch(const String& s, time_t& out)
 {
-    char* oldTZ = getenv("TZ");
+    if (s.length() < 19) return false;
 
-    setenv("TZ", "UTC", 1);
-    tzset();
-
-    time_t out = mktime(t);
-
-    if (oldTZ)
-        setenv("TZ", oldTZ, 1);
-    else
-        unsetenv("TZ");
-
-    tzset();
-    return out;
-}
-
-
-// ============================================================================
-// parseISOtoTimeT() — ISO8601 UTC → time_t (UTC)
-// ============================================================================
-static bool parseISOtoTimeT(const String& iso, time_t &out)
-{
-    if (iso.length() < 19) return false;
-
-    struct tm tt = {};
-
-    tt.tm_year = iso.substring(0,4).toInt() - 1900;
-    tt.tm_mon  = iso.substring(5,7).toInt() - 1;
-    tt.tm_mday = iso.substring(8,10).toInt();
-    tt.tm_hour = iso.substring(11,13).toInt();
-    tt.tm_min  = iso.substring(14,16).toInt();
-    tt.tm_sec  = iso.substring(17,19).toInt();
+    struct tm tt {};
+    tt.tm_year = s.substring(0,4).toInt() - 1900;
+    tt.tm_mon  = s.substring(5,7).toInt() - 1;
+    tt.tm_mday = s.substring(8,10).toInt();
+    tt.tm_hour = s.substring(11,13).toInt();
+    tt.tm_min  = s.substring(14,16).toInt();
+    tt.tm_sec  = s.substring(17,19).toInt();
 
     out = my_timegm(&tt);
     return true;
@@ -117,43 +125,43 @@ static bool parseISOtoTimeT(const String& iso, time_t &out)
 
 
 // ============================================================================
-// extractJSON() — "key":"value"
+// JSON estrazione semplice "key":"value"
 // ============================================================================
-static bool extractJSON(const String& body,
-                        const char* key,
-                        String& out)
+static bool jsonKV(const String& body, const char* key, String& out)
 {
-    String k = String("\"") + key + "\"";
-
-    int p = indexOfCI(body, k);
+    String k = "\"" + String(key) + "\"";
+    int p = body.indexOf(k);
     if (p < 0) return false;
 
-    p = body.indexOf(':', p);
+    p = body.indexOf('"', p + k.length());
     if (p < 0) return false;
 
-    int q1 = body.indexOf('"', p + 1);
-    int q2 = body.indexOf('"', q1 + 1);
-    if (q1 < 0 || q2 < 0) return false;
+    int q = body.indexOf('"', p + 1);
+    if (q < 0) return false;
 
-    out = body.substring(q1 + 1, q2);
+    out = body.substring(p + 1, q);
     return true;
 }
 
 
 // ============================================================================
-// fetchSun() — scarica dati e calcola durata luce locale
+// FETCH DATI
 // ============================================================================
 bool fetchSun()
 {
-    sun_rise = sun_set = sun_noon = sun_len = sun_civB = sun_civE = "";
+    strcpy(sun_rise, "--:--");
+    strcpy(sun_set,  "--:--");
+    strcpy(sun_noon, "--:--");
+    strcpy(sun_len,  "--h --m");
+    strcpy(sun_cb,   "--:--");
+    strcpy(sun_ce,   "--:--");
 
     if (g_lat.isEmpty() || g_lon.isEmpty())
         return false;
 
     String url =
       "https://api.sunrise-sunset.org/json?lat=" + g_lat +
-      "&lng=" + g_lon +
-      "&formatted=0";
+      "&lng=" + g_lon + "&formatted=0";
 
     String body;
     if (!httpGET(url, body, 10000))
@@ -161,36 +169,26 @@ bool fetchSun()
 
     String sr, ss, sn, cb, ce;
 
-    if (!extractJSON(body, "sunrise", sr)) return false;
-    if (!extractJSON(body, "sunset",  ss)) return false;
+    if (!jsonKV(body, "sunrise", sr)) return false;
+    if (!jsonKV(body, "sunset",  ss)) return false;
 
-    extractJSON(body, "solar_noon",           sn);
-    extractJSON(body, "civil_twilight_begin", cb);
-    extractJSON(body, "civil_twilight_end",   ce);
+    jsonKV(body, "solar_noon",           sn);
+    jsonKV(body, "civil_twilight_begin", cb);
+    jsonKV(body, "civil_twilight_end",   ce);
 
-    sun_rise = isoToHM(sr);
-    sun_set  = isoToHM(ss);
-    sun_noon = sn.length() ? isoToHM(sn) : "--:--";
-    sun_civB = cb.length() ? isoToHM(cb) : "--:--";
-    sun_civE = ce.length() ? isoToHM(ce) : "--:--";
+    isoToHM(sr, sun_rise);
+    isoToHM(ss, sun_set);
+    isoToHM(sn, sun_noon);
+    isoToHM(cb, sun_cb);
+    isoToHM(ce, sun_ce);
 
-    // --- calcolo durata luce locale ---
-    time_t tRise, tSet;
-
-    if (parseISOtoTimeT(sr, tRise) &&
-        parseISOtoTimeT(ss, tSet) &&
-        tSet > tRise)
-    {
-        long diff = tSet - tRise;
-        int h = diff / 3600;
-        int m = (diff % 3600) / 60;
-
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%02dh %02dm", h, m);
-        sun_len = buf;
-    }
-    else {
-        sun_len = "--h --m";
+    // durata luce
+    time_t a, b;
+    if (isoToEpoch(sr, a) && isoToEpoch(ss, b) && b > a) {
+        long d = b - a;
+        snprintf(sun_len, sizeof(sun_len),
+                 "%02ldh %02ldm",
+                 d / 3600, (d % 3600) / 60);
     }
 
     return true;
@@ -198,14 +196,12 @@ bool fetchSun()
 
 
 // ============================================================================
-// drawSunRow() — label sinistra + valore destra + linea
+// UI — RIGA
 // ============================================================================
-static inline void drawSunRow(const char* label,
-                              const String& val,
-                              int& y)
+static inline void sunRow(const char* label, const char* val, int& y)
 {
     const int SZ = TEXT_SCALE + 1;
-    const int RH = BASE_CHAR_H * SZ + 10;
+    const int H  = BASE_CHAR_H * SZ + 8;
 
     gfx->setTextSize(SZ);
 
@@ -214,28 +210,133 @@ static inline void drawSunRow(const char* label,
     gfx->print(label);
 
     gfx->setTextColor(COL_ACCENT2, COL_BG);
-    int w = val.length() * BASE_CHAR_W * SZ;
-    int x = 480 - w - PAGE_X;
-    gfx->setCursor(x, y);
+    int w = strlen(val) * BASE_CHAR_W * SZ;
+    gfx->setCursor(480 - PAGE_X - w, y);
     gfx->print(val);
 
-    y += RH;
-    gfx->drawLine(PAGE_X, y, 480 - PAGE_X, y, COL_ACCENT1);
-    y += 6;
+    y += H;
 }
 
 
 // ============================================================================
-// pageSun() — rendering finale
+// FX — ESPLOSIONI VISIBILI, LUMINOSE, SICURE
+// ============================================================================
+#define SUN_FX_MAX     18
+#define SUN_FX_PARTS    8
+
+static const int8_t SUN_DX[SUN_FX_PARTS] PROGMEM = {1,-1,2,-2,1,-1,2,-2};
+static const int8_t SUN_DY[SUN_FX_PARTS] PROGMEM = {2,2,1,1,-2,-2,-1,-1};
+
+struct SunBurst {
+    bool active;
+    int x, y;
+    int px[SUN_FX_PARTS];
+    int py[SUN_FX_PARTS];
+    uint8_t frame;
+    uint8_t maxF;
+};
+
+static SunBurst sb[SUN_FX_MAX];
+static uint32_t sbLast = 0;
+
+static int SUN_FX_YMIN = 320;
+static int SUN_FX_YMAX = 479;
+
+
+// avvia una nuova esplosione
+static inline void sunFxStart()
+{
+    for (int i = 0; i < SUN_FX_MAX; i++) {
+        if (!sb[i].active) {
+            SunBurst& b = sb[i];
+
+            b.active = true;
+            b.frame  = 0;
+            b.maxF   = 10 + random(6);
+
+            b.x = random(60, 420);
+            b.y = random(SUN_FX_YMIN + 10, SUN_FX_YMAX - 10);
+
+            for (int p = 0; p < SUN_FX_PARTS; p++) {
+                b.px[p] = b.x;
+                b.py[p] = b.y;
+            }
+            return;
+        }
+    }
+}
+
+
+// tick animazione
+static void sunFxTick()
+{
+    uint32_t now = millis();
+
+    if (now - sbLast >= 120) {
+        sbLast = now;
+        sunFxStart();
+    }
+
+    for (int i = 0; i < SUN_FX_MAX; i++) {
+
+        SunBurst& b = sb[i];
+        if (!b.active) continue;
+
+        uint8_t f = b.frame;
+        uint16_t fade = 255 - (f * (255 / b.maxF));
+
+        // colore luminoso, tipo flare giallo-arancio
+        uint16_t col =
+            ((fade >> 1) << 11) |   // R forte
+            (fade << 5)        |   // G pieno
+            (fade >> 2);           // B medio
+
+        for (int p = 0; p < SUN_FX_PARTS; p++) {
+
+            // cancella
+            gfx->drawPixel(b.px[p], b.py[p], COL_BG);
+
+            // sposta
+            b.px[p] += pgm_read_byte(&SUN_DX[p]);
+            b.py[p] += pgm_read_byte(&SUN_DY[p]);
+
+            if (b.py[p] >= SUN_FX_YMIN &&
+                b.py[p] <  SUN_FX_YMAX &&
+                b.px[p] >= 0 &&
+                b.px[p] <  480)
+            {
+                gfx->drawPixel(b.px[p], b.py[p], col);
+            }
+        }
+
+        b.frame++;
+        if (b.frame >= b.maxF)
+            b.active = false;
+    }
+}
+
+// ============================================================================
+// WRAPPER RICHIAMABILE DAL MAIN
+// ============================================================================
+void tickSunFX()
+{
+    sunFxTick();
+}
+
+
+// ============================================================================
+// RENDER
 // ============================================================================
 void pageSun()
 {
-    bool it = (g_lang == "it");
+    const bool it = (g_lang == "it");
 
-    drawHeader(it ? "Ore di luce oggi" : "Today's daylight");
+    drawHeader(it ? "Ore di luce oggi"
+                  : "Today's daylight");
+
     int y = PAGE_Y + 20;
 
-    if (sun_rise.isEmpty() || sun_set.isEmpty()) {
+    if (sun_rise[0] == '-' || sun_set[0] == '-') {
         drawBoldMain(PAGE_X, y,
                      it ? "Nessun dato disponibile"
                         : "No data available",
@@ -243,19 +344,18 @@ void pageSun()
         return;
     }
 
-    const char* L_r = it ? "Alba"          : "Sunrise";
-    const char* L_s = it ? "Tramonto"      : "Sunset";
-    const char* L_n = it ? "Mezzogiorno"   : "Solar noon";
-    const char* L_l = it ? "Durata luce"   : "Day length";
-    const char* L_cb= it ? "Civile inizio" : "Civil begin";
-    const char* L_ce= it ? "Civile fine"   : "Civil end";
+    sunRow(it ? "Alba"          : "Sunrise",     sun_rise, y);
+    sunRow(it ? "Tramonto"      : "Sunset",      sun_set,  y);
+    sunRow(it ? "Mezzogiorno"   : "Solar noon",  sun_noon, y);
+    sunRow(it ? "Durata luce"   : "Day length",  sun_len,  y);
+    sunRow(it ? "Civile inizio" : "Civil begin", sun_cb,   y);
+    sunRow(it ? "Civile fine"   : "Civil end",   sun_ce,   y);
 
-    drawSunRow(L_r,  sun_rise, y);
-    drawSunRow(L_s,  sun_set,  y);
-    drawSunRow(L_n,  sun_noon, y);
-    drawSunRow(L_l,  sun_len,  y);
-    drawSunRow(L_cb, sun_civB, y);
-    drawSunRow(L_ce, sun_civE, y);
+    // aggiorna area FX dinamicamente
+    SUN_FX_YMIN = y + 10;
+    SUN_FX_YMAX = 479;
+
+    // animazione
+    sunFxTick();
 }
-
 
